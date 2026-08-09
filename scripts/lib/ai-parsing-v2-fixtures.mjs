@@ -12,6 +12,7 @@ export const FIXTURE_HASHES = Object.freeze({
   candidate: "c".repeat(64),
   parsing: "d".repeat(64),
   prompt: "1".repeat(64),
+  prompt2: "5".repeat(64),
   solution: "3".repeat(64),
   source: "a".repeat(64),
   taxonomy: "b".repeat(64),
@@ -47,7 +48,41 @@ const TAXONOMY_CANDIDATES = [
 }));
 
 export function buildFixtureContext({ sourceKind = "pdf" } = {}) {
+  const applicationEvidence =
+    sourceKind === "unsupported"
+      ? {
+          authority: "application_preanalysis",
+          coverage: "unsupported",
+          questionEvidence: [],
+          version: "application_source_evidence_v2",
+          visualEvidence: [],
+        }
+      : {
+          authority: "application_preanalysis",
+          coverage: "complete",
+          questionEvidence: [
+            {
+              id: "evidence-question-1",
+              kind: "question",
+              pageEnd: 1,
+              pageStart: 1,
+              relationship: "single",
+              textFingerprintSha256: FIXTURE_HASHES.prompt,
+            },
+          ],
+          version: "application_source_evidence_v2",
+          visualEvidence: [
+            {
+              bbox: { height: 0.4, width: 0.6, x: 0.2, y: 0.2 },
+              id: "evidence-visual-1",
+              kind: "question",
+              page: 2,
+              questionEvidenceIds: ["evidence-question-1"],
+            },
+          ],
+        };
   return {
+    applicationEvidence,
     candidateSubsetSha256: FIXTURE_HASHES.candidate,
     maximumQuestions: 200,
     parsingContractSha256: FIXTURE_HASHES.parsing,
@@ -56,6 +91,7 @@ export function buildFixtureContext({ sourceKind = "pdf" } = {}) {
     source: {
       allowedTextFingerprintsSha256: [
         FIXTURE_HASHES.prompt,
+        FIXTURE_HASHES.prompt2,
         FIXTURE_HASHES.answer,
         FIXTURE_HASHES.solution,
         FIXTURE_HASHES.visual,
@@ -250,7 +286,7 @@ function generationFeatures() {
   const observation = {
     confidence: 0.88,
     evidenceSpanIds: ["span-prompt"],
-    recurrenceEvidenceCount: 1,
+    providerObservedInstanceCount: 1,
     value: "direct computation prompt",
   };
   return {
@@ -340,6 +376,7 @@ function replaceQuestionType(proposal, questionType) {
 
 function addVisual(
   proposal,
+  context,
   { kind, required, visualType = "graph", withFact = false },
 ) {
   const question = proposal.questionBlocks[0];
@@ -358,6 +395,14 @@ function addVisual(
       visualType,
     },
   ];
+  const applicationVisual = context.applicationEvidence.visualEvidence.find(
+    (evidence) => evidence.id === "evidence-visual-1",
+  );
+  if (applicationVisual) {
+    applicationVisual.kind = kind === "missing" ? "question" : kind;
+    applicationVisual.questionEvidenceIds =
+      kind === "decorative" ? [] : ["evidence-question-1"];
+  }
   if (withFact) {
     proposal.visualFacts = [
       {
@@ -375,8 +420,9 @@ function addVisual(
   }
 }
 
-function multipartProposal() {
+function multipartProposal(context) {
   const proposal = baseProposal();
+  context.applicationEvidence.questionEvidence[0].relationship = "multipart";
   for (const span of proposal.sourceSpans) {
     span.questionIds = ["q1", "q1a", "q1b"];
   }
@@ -427,19 +473,80 @@ function multipartProposal() {
   return proposal;
 }
 
-function twoQuestionProposal() {
+function twoQuestionProposal(context) {
   const proposal = baseProposal();
-  for (const span of proposal.sourceSpans) {
-    span.questionIds = ["q1", "q2"];
+  const spanById = new Map(proposal.sourceSpans.map((span) => [span.id, span]));
+  const clonedSpanIds = new Map();
+  for (const spanId of [
+    "span-prompt",
+    "span-option-a",
+    "span-option-b",
+    "span-option-c",
+    "span-option-d",
+    "span-answer",
+    "span-solution",
+  ]) {
+    const span = structuredClone(spanById.get(spanId));
+    const nextId = `${spanId}-q2`;
+    span.id = nextId;
+    span.questionIds = ["q2"];
+    if (span.role === "prompt" || span.role === "option") {
+      span.pageStart = 4;
+      span.pageEnd = 4;
+    }
+    if (span.role === "prompt") {
+      span.textFingerprintSha256 = FIXTURE_HASHES.prompt2;
+    }
+    clonedSpanIds.set(spanId, nextId);
+    proposal.sourceSpans.push(span);
   }
-  const second = questionBlock({ id: "q2", visibleNumber: "2" });
+  const second = questionBlock({
+    id: "q2",
+    sourceSpanIds: [clonedSpanIds.get("span-prompt")],
+    visibleNumber: "2",
+  });
+  second.options = second.options.map((option) => ({
+    ...option,
+    sourceSpanIds: option.sourceSpanIds.map((spanId) => clonedSpanIds.get(spanId)),
+  }));
+  const secondPackage = packageFor(second);
+  secondPackage.answer.sourceSpanIds = [clonedSpanIds.get("span-answer")];
+  secondPackage.solution.conclusion.sourceSpanIds = [
+    clonedSpanIds.get("span-answer"),
+  ];
+  secondPackage.solution.sourceSpanIds = [clonedSpanIds.get("span-solution")];
+  secondPackage.solution.steps[0].id = "step-q2";
+  secondPackage.solution.steps[0].sourceSpanIds = [
+    clonedSpanIds.get("span-solution"),
+  ];
+  for (const decision of secondPackage.taxonomyDecisions) {
+    decision.evidenceSpanIds = [clonedSpanIds.get("span-prompt")];
+  }
+  for (const observations of Object.values(
+    secondPackage.generationRelevantFeatures,
+  )) {
+    for (const observation of observations) {
+      observation.evidenceSpanIds = [clonedSpanIds.get("span-prompt")];
+    }
+  }
   proposal.questionBlocks.push(second);
-  proposal.questionPackages.push(packageFor(second));
+  proposal.questionPackages.push(secondPackage);
+  context.applicationEvidence.questionEvidence.push({
+    id: "evidence-question-2",
+    kind: "question",
+    pageEnd: 4,
+    pageStart: 4,
+    relationship: "single",
+    textFingerprintSha256: FIXTURE_HASHES.prompt2,
+  });
   return proposal;
 }
 
-function sharedVisualProposal() {
-  const proposal = twoQuestionProposal();
+function sharedVisualProposal(context) {
+  const proposal = twoQuestionProposal(context);
+  proposal.sourceSpans.find(
+    (span) => span.id === "span-visual",
+  ).questionIds = ["q1", "q2"];
   for (const question of proposal.questionBlocks) {
     question.boundaryKind = "shared_visual";
     question.requiredVisualIds = ["visual-shared"];
@@ -471,10 +578,15 @@ function sharedVisualProposal() {
   for (const item of proposal.questionPackages) {
     item.solution.steps[0].visualFactIds = ["visual-fact-shared"];
   }
+  context.applicationEvidence.visualEvidence[0].kind = "shared";
+  context.applicationEvidence.visualEvidence[0].questionEvidenceIds = [
+    "evidence-question-1",
+    "evidence-question-2",
+  ];
   return proposal;
 }
 
-function multipleVisualProposal() {
+function multipleVisualProposal(context) {
   const proposal = baseProposal();
   const secondVisualSpan = {
     ...structuredClone(
@@ -533,6 +645,13 @@ function multipleVisualProposal() {
     "visual-fact-1",
     "visual-fact-2",
   ];
+  context.applicationEvidence.visualEvidence.push({
+    bbox: { height: 0.2, width: 0.25, x: 0.65, y: 0.2 },
+    id: "evidence-visual-2",
+    kind: "question",
+    page: 2,
+    questionEvidenceIds: ["evidence-question-1"],
+  });
   return proposal;
 }
 
@@ -610,11 +729,12 @@ export function buildDevelopmentFixture(fixtureKind) {
       replaceQuestionType(proposal, "free_response");
       break;
     case "multipart":
-      proposal = multipartProposal();
+      proposal = multipartProposal(context);
       break;
     case "cross_page":
       proposal.questionBlocks[0].boundaryKind = "cross_page_continuation";
       proposal.sourceSpans.find((span) => span.id === "span-prompt").pageEnd = 2;
+      context.applicationEvidence.questionEvidence[0].pageEnd = 2;
       break;
     case "shared_prompt":
       proposal.questionBlocks[0].boundaryKind = "shared_prompt";
@@ -623,10 +743,14 @@ export function buildDevelopmentFixture(fixtureKind) {
       proposal.questionBlocks[0].boundaryKind = "answer_key_continuation";
       break;
     case "required_graph":
-      addVisual(proposal, { kind: "question", required: true, withFact: true });
+      addVisual(proposal, context, {
+        kind: "question",
+        required: true,
+        withFact: true,
+      });
       break;
     case "required_table":
-      addVisual(proposal, {
+      addVisual(proposal, context, {
         kind: "question",
         required: true,
         visualType: "table",
@@ -634,21 +758,37 @@ export function buildDevelopmentFixture(fixtureKind) {
       });
       break;
     case "shared_visual":
-      proposal = sharedVisualProposal();
+      proposal = sharedVisualProposal(context);
       break;
     case "multiple_visuals":
-      proposal = multipleVisualProposal();
+      proposal = multipleVisualProposal(context);
       break;
     case "decorative_visual":
-      addVisual(proposal, { kind: "decorative", required: false });
+      addVisual(proposal, context, { kind: "decorative", required: false });
       break;
     case "missing_visual":
-      addVisual(proposal, { kind: "missing", required: true });
+      addVisual(proposal, context, { kind: "missing", required: true });
       break;
     case "ambiguous_visual":
-      addVisual(proposal, { kind: "ambiguous", required: true });
+      addVisual(proposal, context, { kind: "ambiguous", required: true });
       break;
     case "no_questions":
+      context.applicationEvidence = {
+        authority: "application_preanalysis",
+        coverage: "complete",
+        questionEvidence: [
+          {
+            id: "evidence-non-question-1",
+            kind: "non_question",
+            pageEnd: 1,
+            pageStart: 1,
+            relationship: "single",
+            textFingerprintSha256: FIXTURE_HASHES.prompt,
+          },
+        ],
+        version: "application_source_evidence_v2",
+        visualEvidence: [],
+      };
       proposal = {
         assessment: {
           confidence: 0.98,
@@ -669,12 +809,44 @@ export function buildDevelopmentFixture(fixtureKind) {
       };
       break;
     case "insufficient_source":
+      context.applicationEvidence = {
+        authority: "application_preanalysis",
+        coverage: "complete",
+        questionEvidence: [
+          {
+            id: "evidence-incomplete-question-1",
+            kind: "incomplete_question",
+            pageEnd: 1,
+            pageStart: 1,
+            relationship: "single",
+            textFingerprintSha256: FIXTURE_HASHES.prompt,
+          },
+        ],
+        version: "application_source_evidence_v2",
+        visualEvidence: [],
+      };
       proposal = compactInsufficientProposal({
         findingCode: "incomplete_question",
         spanId: "span-prompt",
       });
       break;
     case "answer_only_source":
+      context.applicationEvidence = {
+        authority: "application_preanalysis",
+        coverage: "complete",
+        questionEvidence: [
+          {
+            id: "evidence-answer-only-1",
+            kind: "answer_only",
+            pageEnd: 3,
+            pageStart: 3,
+            relationship: "single",
+            textFingerprintSha256: FIXTURE_HASHES.answer,
+          },
+        ],
+        version: "application_source_evidence_v2",
+        visualEvidence: [],
+      };
       proposal = compactInsufficientProposal({
         findingCode: "answer_only_source",
         spanId: "span-answer",
@@ -774,7 +946,7 @@ export function buildDevelopmentFixture(fixtureKind) {
         {
           confidence: 0.97,
           evidenceSpanIds: ["span-prompt"],
-          recurrenceEvidenceCount: 1,
+          providerObservedInstanceCount: 1,
           value: "F1 is 8 N right and F2 is 3 N left",
         },
       ];
@@ -782,7 +954,7 @@ export function buildDevelopmentFixture(fixtureKind) {
         {
           confidence: 0.86,
           evidenceSpanIds: ["span-prompt"],
-          recurrenceEvidenceCount: 1,
+          providerObservedInstanceCount: 1,
           value: "force magnitudes",
         },
       ];
@@ -790,7 +962,7 @@ export function buildDevelopmentFixture(fixtureKind) {
         {
           confidence: 0.61,
           evidenceSpanIds: ["span-prompt"],
-          recurrenceEvidenceCount: 1,
+          providerObservedInstanceCount: 1,
           value: "candidate opposing collinear forces pattern",
         },
       ];
@@ -798,7 +970,7 @@ export function buildDevelopmentFixture(fixtureKind) {
         {
           confidence: 0.9,
           evidenceSpanIds: ["span-prompt"],
-          recurrenceEvidenceCount: 1,
+          providerObservedInstanceCount: 1,
           value: "compare magnitudes then subtract",
         },
       ];
@@ -810,7 +982,7 @@ export function buildDevelopmentFixture(fixtureKind) {
         {
           confidence: 0.99,
           evidenceSpanIds: ["span-prompt"],
-          recurrenceEvidenceCount: 1,
+          providerObservedInstanceCount: 1,
           value: "the source happens to use the numbers 8 and 3",
         },
       ];
@@ -818,14 +990,14 @@ export function buildDevelopmentFixture(fixtureKind) {
         {
           confidence: 0.35,
           evidenceSpanIds: ["span-prompt"],
-          recurrenceEvidenceCount: 1,
+          providerObservedInstanceCount: 1,
           value: "unproven candidate only; never a generator rule",
         },
       ];
       break;
     }
     case "invalid_bbox": {
-      addVisual(proposal, { kind: "question", required: true });
+      addVisual(proposal, context, { kind: "question", required: true });
       const span = proposal.sourceSpans.find(
         (candidate) => candidate.id === "span-visual",
       );
@@ -834,11 +1006,15 @@ export function buildDevelopmentFixture(fixtureKind) {
       break;
     }
     case "fabricated_visual_fact":
-      addVisual(proposal, { kind: "question", required: true, withFact: true });
+      addVisual(proposal, context, {
+        kind: "question",
+        required: true,
+        withFact: true,
+      });
       proposal.visualFacts[0].visualObjectId = "visual-does-not-exist";
       break;
     case "answer_key_visual":
-      addVisual(proposal, {
+      addVisual(proposal, context, {
         kind: "answer_key",
         required: false,
         visualType: "diagram",
@@ -846,7 +1022,11 @@ export function buildDevelopmentFixture(fixtureKind) {
       });
       break;
     case "two_questions":
-      proposal = twoQuestionProposal();
+      proposal = twoQuestionProposal(context);
+      break;
+    case "ambiguous_source_evidence":
+      context.applicationEvidence.coverage = "ambiguous";
+      context.applicationEvidence.questionEvidence[0].kind = "ambiguous";
       break;
     case "ambiguous_boundary":
       proposal.questionBlocks[0].boundaryKind = "ambiguous";

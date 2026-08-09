@@ -28,6 +28,12 @@ application remains authoritative for source scope, lineage, taxonomy
 eligibility, deterministic identities, validation findings, quality
 disposition, Bank scope, and Review state.
 
+The application authority is independent rather than a consistency check over
+Provider output. Source preanalysis supplies bounded Question and visual
+evidence before canonicalization. The Provider assessment remains visible as a
+proposal, but the canonical assessment and disposition are derived by
+reconciling that proposal with the application evidence.
+
 ## Non-goals
 
 This foundation does not:
@@ -79,17 +85,26 @@ foundation defines:
 
 Provider input is parsed as `DocumentExtractionProposalV2`. A separate
 application-owned context supplies the allowed source, page range, packet
-scope, Bank scope, taxonomy snapshot, and candidate subset. Validation produces
-`DocumentExtractionV2`; it never mutates the proposal in place.
+scope, Bank scope, source-preanalysis Question/visual evidence, taxonomy
+snapshot, and candidate subset. Validation produces `DocumentExtractionV2`; it
+never mutates the proposal in place.
 
 ## Source and boundary authority
 
-Document sufficiency has exactly four states:
+The Provider proposes one of four source-sufficiency states:
 
 - `extractable`;
 - `no_questions`;
 - `insufficient_evidence`;
 - `unsupported_source`.
+
+Application preanalysis independently classifies the source as `extractable`,
+`no_questions`, `insufficient_evidence`, `ambiguous`, or
+`unsupported_source`. Complete Question evidence contradicts a false Provider
+abstention. Answer-only, incomplete, non-Question, or unsupported evidence
+cannot be promoted to an extractable Question by Provider output. Ambiguous or
+partial application evidence remains `needs_more_evidence` rather than being
+presented as certain.
 
 Source spans describe one of these evidence roles:
 
@@ -119,6 +134,16 @@ decorative, missing, and ambiguous visuals. Visual facts remain bounded
 Provider proposals linked to source spans. The application validates finite
 bounds, source/page lineage, question association, required/decorative
 semantics, and deterministic identity inputs.
+
+A Provider visual source span is matched to an exact application-owned visual
+region. That application evidence lists the application Question-evidence IDs
+the visual can support. The mature page-lineage kernel receives only Question
+pages and independently authorized application visual pages; the proposed
+visual page cannot add itself to the allowlist. A real visual grounded to one
+Question therefore cannot be reassigned to another existing Question by
+mutating all Provider-owned relationship fields. Explicit application evidence
+continues to support cross-page Questions, shared visuals, answer-key visuals,
+and multiple visuals.
 
 P0 adapts the mature V1 visual-proposal kernel and creates only deterministic
 crop proposal references. It does not render, crop,
@@ -157,7 +182,9 @@ assigned.
 
 Generation-relevant features preserve source-backed observations that a future
 Blueprint may consume. They are candidate evidence only. Single-instance
-observations cannot become authoritative Blueprint invariants in this layer.
+observations expose only `providerObservedInstanceCount: 1`; this is not an
+application recurrence count and cannot become an authoritative Blueprint
+invariant in this layer.
 AI Parsing observes; Blueprint may later consume observations; generation
 remains separately review-gated.
 
@@ -190,6 +217,14 @@ packages into the current Question and Review DTO shapes:
 - visual references -> unresolved private-asset projection references;
 - `review_ready` -> `pending_review`;
 - `needs_more_evidence` -> `needs_more_evidence`.
+
+Current V1 stores one `questions` row for a `mixed` item and has no
+parent/child Question columns. V1 Review and Practice consume that row as one
+item with one `answer_spec`. The compatibility projection therefore emits one
+mixed Review DTO for a canonical multipart parent, folds child prompt/answer
+metadata and complete source lineage into it, and propagates any child
+`needs_more_evidence` warning. Canonical V2 retains the parent and child
+packages unchanged.
 
 Provider text is escaped before HTML projection. The projection contains no DB
 write, generated UUID, approval, publication, Assignment, or public asset URL.
@@ -248,11 +283,11 @@ Assignments at zero.
 
 ## Context accounting
 
-The fixed source/fake initial request measures 35,669 UTF-8 bytes: 588 policy,
-546 instructions, 32,545 Provider-visible schema, 184 taxonomy identity, 852
+The fixed source/fake initial request measures 35,529 UTF-8 bytes: 588 policy,
+546 instructions, 32,405 Provider-visible schema, 184 taxonomy identity, 852
 candidate subset, 256 source-packet metadata, 183 visual metadata, and 172
 source content. Repair context and repeated source content are both zero. The
-comparable V1 schema source file is 5,904 bytes, so the V2 schema is 26,641
+comparable V1 schema source file is 5,904 bytes, so the V2 schema is 26,501
 bytes larger in this local comparison. These are byte measurements, not token
 or cost claims; Provider token counts are `NOT_MEASURED`.
 

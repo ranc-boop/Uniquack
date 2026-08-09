@@ -11,20 +11,22 @@ Provider proposal version: `ai_parsing_proposal_v2`
 | Layer | May contain | May not decide |
 | --- | --- | --- |
 | Provider proposal | source-span proposals, question boundaries, visual facts, typed-answer proposals, auditable solution steps, taxonomy candidates, generation observations | Bank scope, canonical lineage, Review state, quality disposition, approval, publication, Assignment, persistent asset identity |
-| Validation context | allowed source and pages, Bank scope, source fingerprints, taxonomy snapshot and bounded candidate set, contract fingerprints, maximum question count | Provider content or product publication state |
+| Validation context | allowed source and pages, Bank scope, application preanalysis evidence, source fingerprints, taxonomy snapshot and bounded candidate set, contract fingerprints, maximum question count | Provider content or product publication state |
 | Canonical extraction | only application-validated proposal data plus application authority fields and findings | hidden reasoning, unvalidated IDs, public asset URLs, approval, publication, Assignment |
 | V1 projection | pure private Review DTOs in `pending_review` or `needs_more_evidence` | database writes, generated IDs, auto-approval, publication, assignment |
 
 `DocumentExtractionProposalV2` and `DocumentExtractionV2` are different strict
-schemas. Canonical objects carry `authority: application_validated`; proposal
-objects cannot supply that field. Application-owned `QualityDispositionV2` is
-never accepted from Provider output.
+schemas. Canonical objects carry application authority fields; proposal objects
+cannot supply them. `DocumentAssessmentV2` retains the Provider assessment as a
+proposal while separately recording application-derived evidence state and
+sufficiency. Application-owned `QualityDispositionV2` is never accepted from
+Provider output.
 
 ## Contract family
 
 | Contract | Purpose | Required authority checks |
 | --- | --- | --- |
-| `DocumentAssessmentV2` | Classifies source sufficiency | One of `extractable`, `no_questions`, `insufficient_evidence`, `unsupported_source`; evidence IDs resolve |
+| `DocumentAssessmentV2` | Reconciles proposed source sufficiency with application evidence | Provider proposal is retained; application evidence is independently classified as `extractable`, `no_questions`, `insufficient_evidence`, `ambiguous`, or `unsupported_source` |
 | `SourceSpanV2` | Binds evidence to source, page/region, role, and local Question IDs | Source and pages are allowlisted; exact fingerprints and region bounds validate |
 | `QuestionBlockV2` | Represents standalone, multipart, shared, continued, or ambiguous boundaries | Parent, child, option, prompt, and visual references resolve locally |
 | `VisualObjectV2` | Registers question, answer-key, shared, decorative, missing, or ambiguous visuals | Source-bound; finite normalized regions; deterministic crop proposal identity only |
@@ -54,6 +56,16 @@ Question boundary kinds are `standalone`, `multipart_parent`,
 `multipart_child`, `shared_prompt`, `cross_page_continuation`, `shared_visual`,
 `answer_key_continuation`, and `ambiguous`. Impossible, foreign, inverted,
 missing, or cyclic references fail closed.
+
+The application context also carries source-preanalysis evidence that is not
+part of the Provider response. Question evidence records source-owned page
+bounds, an optional exact text fingerprint, and any deliberate multipart or
+shared-prompt relationship. Visual evidence records an exact source region and
+the application Question-evidence IDs that region may support. Provider spans
+must match this evidence before they can become canonical. A Provider cannot
+make an abstention authoritative merely by returning an empty proposal, and it
+cannot manufacture a Question from answer-only, incomplete, or unsupported
+application evidence.
 
 ## Answers and solutions
 
@@ -85,7 +97,12 @@ identity `null`.
 
 Decorative visuals do not project as Question assets. Missing required visuals
 produce `needs_more_evidence`. Shared visual-to-Question relationships are
-explicit, and a visual fact cannot be attached to an unrelated Question.
+explicit, and a visual fact cannot be attached to an unrelated Question. The
+candidate visual page never authorizes itself: an exact application visual
+region must independently support every associated application Question
+evidence ID. This preserves explicitly supported cross-page, shared,
+answer-key, and multiple-visual relationships while rejecting a self-consistent
+Provider reassignment between two real Questions.
 
 ## Generation observations
 
@@ -103,6 +120,10 @@ explicit, and a visual fact cannot be attached to an unrelated Question.
 10. `surfaceSpecificDetails`
 
 Each observation is `candidate_only`, Provider-proposed, and evidence-linked.
+Its `providerObservedInstanceCount` is the literal value `1`; it names the one
+source instance observed by the Provider and cannot be read as
+application-observed recurrence across documents. Future recurrence aggregation requires a
+separate application-owned contract.
 Parsing does not create a Blueprint. A future Blueprint may consume these
 observations under its own ownership, versioning, review, and generation gate.
 
@@ -110,7 +131,10 @@ observations under its own ownership, versioning, review, and generation gate.
 
 The V2-to-V1 projection is pure. It requires the caller's Bank scope to match
 the canonical extraction, escapes Provider text before HTML projection, and
-emits only private Review DTOs. It has no database, Storage, Provider, queue,
+emits only private Review DTOs. Canonical multipart parent and child packages
+project as one current-V1 `mixed` Question; child prompts, answers, lineage, and
+the strictest child Review state remain in that one DTO rather than becoming
+duplicate Question rows. It has no database, Storage, Provider, queue,
 publication, or Assignment side effect.
 
 `toSafeCanonicalizationSummaryV2` is the only intended diagnostic summary. It

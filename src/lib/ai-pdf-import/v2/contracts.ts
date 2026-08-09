@@ -37,6 +37,17 @@ export type SourceSufficiencyV2 = z.infer<
   typeof sourceSufficiencyV2Schema
 >;
 
+export const applicationEvidenceStateV2Schema = z.enum([
+  "extractable",
+  "no_questions",
+  "insufficient_evidence",
+  "ambiguous",
+  "unsupported_source",
+]);
+export type ApplicationEvidenceStateV2 = z.infer<
+  typeof applicationEvidenceStateV2Schema
+>;
+
 export const sourceEvidenceRoleV2Schema = z.enum([
   "prompt",
   "option",
@@ -180,11 +191,15 @@ export const documentAssessmentProposalV2Schema = z
   })
   .strict();
 
-export const documentAssessmentV2Schema =
-  documentAssessmentProposalV2Schema.extend({
-    authority: z.literal("application_validated"),
+export const documentAssessmentV2Schema = z
+  .object({
+    authority: z.literal("application"),
+    evidenceState: applicationEvidenceStateV2Schema,
+    providerProposal: documentAssessmentProposalV2Schema,
+    sufficiency: sourceSufficiencyV2Schema,
     version: z.literal("document_assessment_v2"),
-  });
+  })
+  .strict();
 export type DocumentAssessmentProposalV2 = z.infer<
   typeof documentAssessmentProposalV2Schema
 >;
@@ -239,6 +254,7 @@ export const questionBlockProposalV2Schema = z
   .strict();
 
 export const questionBlockV2Schema = questionBlockProposalV2Schema.extend({
+  applicationEvidenceIds: z.array(boundedIdSchema).min(1).max(100),
   authority: z.literal("application_validated"),
   version: z.literal("question_block_v2"),
 });
@@ -290,6 +306,7 @@ export const visualObjectProposalV2Schema = z
   });
 
 export const visualObjectV2Schema = visualObjectProposalV2Schema.extend({
+  applicationEvidenceId: boundedIdSchema.nullable(),
   authority: z.literal("application_validated"),
   deterministicCropProposalKey: z.string().trim().min(1).max(1_000).nullable(),
   persistentAssetIdentity: z.null(),
@@ -513,7 +530,7 @@ export const generationObservationProposalV2Schema = z
   .object({
     confidence: confidenceSchema,
     evidenceSpanIds: z.array(boundedIdSchema).min(1).max(50),
-    recurrenceEvidenceCount: z.number().int().positive().max(100),
+    providerObservedInstanceCount: z.literal(1),
     value: boundedShortTextSchema,
   })
   .strict();
@@ -621,6 +638,10 @@ export const validationFindingCodeV2Schema = z.enum([
   "taxonomy_candidate_invalid",
   "generation_evidence_invalid",
   "assessment_inconsistent",
+  "application_source_evidence_contradiction",
+  "application_source_evidence_ambiguous",
+  "question_application_evidence_invalid",
+  "visual_application_evidence_invalid",
   "question_limit_exceeded",
   "incomplete_question",
   "answer_only_source",
@@ -736,6 +757,87 @@ export const validationSourceContextV2Schema = z
   })
   .strict();
 
+export const applicationQuestionEvidenceV2Schema = z
+  .object({
+    id: boundedIdSchema,
+    kind: z.enum([
+      "question",
+      "incomplete_question",
+      "answer_only",
+      "non_question",
+      "ambiguous",
+    ]),
+    pageEnd: z.number().int().positive(),
+    pageStart: z.number().int().positive(),
+    relationship: z.enum(["single", "multipart", "shared_prompt"]),
+    textFingerprintSha256: sha256Schema.nullable(),
+  })
+  .strict()
+  .superRefine((evidence, context) => {
+    if (evidence.pageStart > evidence.pageEnd) {
+      context.addIssue({
+        code: "custom",
+        message: "Application question evidence page bounds are inverted.",
+        path: ["pageEnd"],
+      });
+    }
+    if (evidence.kind !== "question" && evidence.relationship !== "single") {
+      context.addIssue({
+        code: "custom",
+        message: "Only question evidence can authorize a shared relationship.",
+        path: ["relationship"],
+      });
+    }
+  });
+
+export const applicationVisualEvidenceV2Schema = z
+  .object({
+    bbox: normalizedBoundingBoxV2Schema,
+    id: boundedIdSchema,
+    kind: z.enum([
+      "question",
+      "answer_key",
+      "shared",
+      "decorative",
+      "ambiguous",
+    ]),
+    page: z.number().int().positive(),
+    questionEvidenceIds: z.array(boundedIdSchema).max(100).default([]),
+  })
+  .strict()
+  .superRefine((evidence, context) => {
+    if (
+      evidence.kind !== "decorative" &&
+      evidence.kind !== "ambiguous" &&
+      evidence.questionEvidenceIds.length === 0
+    ) {
+      context.addIssue({
+        code: "custom",
+        message: "Question-bearing visual evidence requires question evidence.",
+        path: ["questionEvidenceIds"],
+      });
+    }
+  });
+
+export const applicationSourceEvidenceV2Schema = z
+  .object({
+    authority: z.literal("application_preanalysis"),
+    coverage: z.enum(["complete", "partial", "ambiguous", "unsupported"]),
+    questionEvidence: z.array(applicationQuestionEvidenceV2Schema).max(2_000),
+    version: z.literal("application_source_evidence_v2"),
+    visualEvidence: z.array(applicationVisualEvidenceV2Schema).max(1_000),
+  })
+  .strict();
+export type ApplicationQuestionEvidenceV2 = z.infer<
+  typeof applicationQuestionEvidenceV2Schema
+>;
+export type ApplicationVisualEvidenceV2 = z.infer<
+  typeof applicationVisualEvidenceV2Schema
+>;
+export type ApplicationSourceEvidenceV2 = z.infer<
+  typeof applicationSourceEvidenceV2Schema
+>;
+
 export const validationTaxonomyNodeV2Schema = z
   .object({
     active: z.boolean(),
@@ -748,6 +850,7 @@ export const validationTaxonomyNodeV2Schema = z
 
 export const validationContextV2Schema = z
   .object({
+    applicationEvidence: applicationSourceEvidenceV2Schema,
     candidateSubsetSha256: sha256Schema,
     maximumQuestions: z.number().int().positive().max(200).default(200),
     parsingContractSha256: sha256Schema,
@@ -757,7 +860,78 @@ export const validationContextV2Schema = z
     taxonomySnapshotSha256: sha256Schema,
     version: z.literal(AI_PARSING_V2_CONTEXT_VERSION),
   })
-  .strict();
+  .strict()
+  .superRefine((validation, context) => {
+    const availablePages = new Set(validation.source.availablePageNumbers);
+    const allowedFingerprints = new Set(
+      validation.source.allowedTextFingerprintsSha256,
+    );
+    const questionEvidenceIds = new Set<string>();
+
+    for (const evidence of validation.applicationEvidence.questionEvidence) {
+      if (questionEvidenceIds.has(evidence.id)) {
+        context.addIssue({
+          code: "custom",
+          message: "Application question evidence IDs must be unique.",
+          path: ["applicationEvidence", "questionEvidence"],
+        });
+      }
+      questionEvidenceIds.add(evidence.id);
+      if (
+        !availablePages.has(evidence.pageStart) ||
+        !availablePages.has(evidence.pageEnd) ||
+        evidence.pageEnd > validation.source.pageCount
+      ) {
+        context.addIssue({
+          code: "custom",
+          message: "Application question evidence references an unavailable page.",
+          path: ["applicationEvidence", "questionEvidence"],
+        });
+      }
+      if (
+        evidence.textFingerprintSha256 !== null &&
+        !allowedFingerprints.has(evidence.textFingerprintSha256)
+      ) {
+        context.addIssue({
+          code: "custom",
+          message: "Application question evidence fingerprint is not source-owned.",
+          path: ["applicationEvidence", "questionEvidence"],
+        });
+      }
+    }
+
+    const visualEvidenceIds = new Set<string>();
+    for (const evidence of validation.applicationEvidence.visualEvidence) {
+      if (visualEvidenceIds.has(evidence.id)) {
+        context.addIssue({
+          code: "custom",
+          message: "Application visual evidence IDs must be unique.",
+          path: ["applicationEvidence", "visualEvidence"],
+        });
+      }
+      visualEvidenceIds.add(evidence.id);
+      if (
+        !availablePages.has(evidence.page) ||
+        evidence.page > validation.source.pageCount ||
+        evidence.questionEvidenceIds.some((id) => !questionEvidenceIds.has(id))
+      ) {
+        context.addIssue({
+          code: "custom",
+          message: "Application visual evidence has invalid source lineage.",
+          path: ["applicationEvidence", "visualEvidence"],
+        });
+      }
+    }
+
+    const unsupported = validation.applicationEvidence.coverage === "unsupported";
+    if (unsupported !== (validation.source.sourceKind === "unsupported")) {
+      context.addIssue({
+        code: "custom",
+        message: "Unsupported source evidence must agree with the source kind.",
+        path: ["applicationEvidence", "coverage"],
+      });
+    }
+  });
 export type ValidationContextV2 = z.infer<
   typeof validationContextV2Schema
 >;

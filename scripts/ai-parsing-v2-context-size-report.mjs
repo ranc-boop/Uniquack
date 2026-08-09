@@ -33,7 +33,7 @@ const { composeProviderRequestV2 } = await import(
   "../src/lib/ai-pdf-import/v2/prompt-contract.ts"
 );
 const { FIXTURE_HASHES, buildDevelopmentFixture } = await import(
-  "../test/support/ai-parsing-v2-fixtures.mjs"
+  "./lib/ai-parsing-v2-fixtures.mjs"
 );
 
 const fixture = buildDevelopmentFixture("multiple_visuals");

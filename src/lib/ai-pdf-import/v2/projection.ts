@@ -31,6 +31,16 @@ export type V1ReviewDraftProjectionV2 = {
       contractVersion: "ai_parsing_canonical_v2";
       disposition: CanonicalQuestionPackageV2["disposition"]["status"];
       generationRelevantFeatures: CanonicalQuestionPackageV2["generationRelevantFeatures"];
+      multipartChildren: Array<{
+        answer: CanonicalAnswerProposalV2;
+        disposition: CanonicalQuestionPackageV2["disposition"]["status"];
+        generationRelevantFeatures: CanonicalQuestionPackageV2["generationRelevantFeatures"];
+        id: string;
+        options: CanonicalQuestionPackageV2["question"]["options"];
+        promptText: string;
+        questionType: CanonicalQuestionPackageV2["question"]["questionType"];
+        visibleNumber: string | null;
+      }>;
       sourceLineage: Array<{
         bbox: CanonicalQuestionPackageV2["sourceSpans"][number]["bbox"];
         pageEnd: number | null;
@@ -114,6 +124,10 @@ function projectedQuestionType(
   }
 }
 
+function uniqueById<T extends { id: string }>(values: T[]) {
+  return Array.from(new Map(values.map((value) => [value.id, value])).values());
+}
+
 function answerSpecProjection(
   answer: CanonicalAnswerProposalV2,
 ): V1QuestionAnswerSpecProjectionV2 {
@@ -175,9 +189,11 @@ function solutionSource(packageValue: CanonicalQuestionPackageV2) {
 }
 
 function projectPackage({
+  multipartChildren,
   ownerBankId,
   packageValue,
 }: {
+  multipartChildren: CanonicalQuestionPackageV2[];
   ownerBankId: string;
   packageValue: CanonicalQuestionPackageV2;
 }): V1ReviewDraftProjectionV2 | null {
@@ -188,15 +204,65 @@ function projectPackage({
     return null;
   }
 
-  const solution = solutionSource(packageValue);
+  const projectionPackages = [packageValue, ...multipartChildren];
+  const effectiveDisposition = projectionPackages.some(
+    (item) => item.disposition.status === "needs_more_evidence",
+  )
+    ? "needs_more_evidence"
+    : packageValue.disposition.status;
+  const findingCodes = Array.from(
+    new Set(
+      projectionPackages.flatMap((item) => item.disposition.findingCodes),
+    ),
+  );
+  const sourceLineage = uniqueById(
+    projectionPackages.flatMap((item) => item.sourceSpans),
+  );
+  const visualReferences = uniqueById(
+    projectionPackages.flatMap((item) => item.visualObjects),
+  );
+  const questionContent = [
+    packageValue.question.promptText,
+    ...multipartChildren.map((child) => {
+      const prompt = child.question.visibleNumber
+        ? `${child.question.visibleNumber}. ${child.question.promptText}`
+        : child.question.promptText;
+      return [
+        prompt,
+        ...child.question.options.map(
+          (option) => `${option.label}. ${option.text}`,
+        ),
+      ].join("\n");
+    }),
+  ].join("\n\n");
+  const solution = [
+    solutionSource(packageValue),
+    ...multipartChildren.map((child) => {
+      const childSolution = solutionSource(child);
+      if (!childSolution) return "";
+      return child.question.visibleNumber
+        ? `${child.question.visibleNumber}. ${childSolution}`
+        : childSolution;
+    }),
+  ]
+    .filter(Boolean)
+    .join("\n\n");
   const title = packageValue.question.visibleNumber
     ? `Question ${packageValue.question.visibleNumber}`
     : `Imported question ${packageValue.question.id}`;
-  const tagIds = packageValue.taxonomyDecisions
-    .filter((decision) => decision.decision === "assign" && decision.tagId)
-    .map((decision) => decision.tagId!);
+  const tagIds = Array.from(
+    new Set(
+      projectionPackages.flatMap((item) =>
+        item.taxonomyDecisions
+          .filter(
+            (decision) => decision.decision === "assign" && decision.tagId,
+          )
+          .map((decision) => decision.tagId!),
+      ),
+    ),
+  );
   const reviewStatus =
-    packageValue.disposition.status === "needs_more_evidence"
+    effectiveDisposition === "needs_more_evidence"
       ? "needs_more_evidence"
       : "pending_review";
 
@@ -205,9 +271,19 @@ function projectPackage({
       ai_metadata: {
         canonicalAnswer: packageValue.answer.proposal,
         contractVersion: "ai_parsing_canonical_v2",
-        disposition: packageValue.disposition.status,
+        disposition: effectiveDisposition,
         generationRelevantFeatures: packageValue.generationRelevantFeatures,
-        sourceLineage: packageValue.sourceSpans.map((span) => ({
+        multipartChildren: multipartChildren.map((child) => ({
+          answer: child.answer.proposal,
+          disposition: child.disposition.status,
+          generationRelevantFeatures: child.generationRelevantFeatures,
+          id: child.question.id,
+          options: child.question.options,
+          promptText: child.question.promptText,
+          questionType: child.question.questionType,
+          visibleNumber: child.question.visibleNumber,
+        })),
+        sourceLineage: sourceLineage.map((span) => ({
           bbox: span.bbox,
           pageEnd: span.pageEnd,
           pageStart: span.pageStart,
@@ -218,7 +294,7 @@ function projectPackage({
           spanId: span.id,
         })),
         taxonomyDecisions: packageValue.taxonomyDecisions,
-        visualReferences: packageValue.visualObjects
+        visualReferences: visualReferences
           .filter((visual) => visual.kind !== "decorative")
           .map((visual) => ({
             deterministicCropProposalKey: visual.deterministicCropProposalKey,
@@ -229,8 +305,8 @@ function projectPackage({
           })),
       },
       answer_spec: answerSpecProjection(packageValue.answer.proposal),
-      content_html: sourceToHtml(packageValue.question.promptText),
-      content_source: packageValue.question.promptText,
+      content_html: sourceToHtml(questionContent),
+      content_source: questionContent,
       content_source_format: "markdown",
       difficulty_rating: packageValue.question.difficultyRating,
       options: packageValue.question.options.map((option) => ({
@@ -255,12 +331,12 @@ function projectPackage({
     reviewItem: {
       draft_payload: {
         aiParsingV2ContractVersion: "ai_parsing_canonical_v2",
-        qualityDisposition: packageValue.disposition.status,
+        qualityDisposition: effectiveDisposition,
         writeAuthority: "none_source_only_projection",
       },
       status: reviewStatus,
       target_bank_id: ownerBankId,
-      validation_warnings: packageValue.disposition.findingCodes,
+      validation_warnings: findingCodes,
     },
   };
 }
@@ -276,7 +352,32 @@ export function projectDocumentExtractionV2ToV1ReviewDrafts({
   if (!ownerBankId.trim()) return [];
   if (ownerBankId !== extraction.bankScopeKey) return [];
 
+  const packagesByQuestionId = new Map(
+    extraction.questionPackages.map((packageValue) => [
+      packageValue.question.id,
+      packageValue,
+    ]),
+  );
+
   return extraction.questionPackages
-    .map((packageValue) => projectPackage({ ownerBankId, packageValue }))
+    .filter(
+      (packageValue) =>
+        packageValue.question.boundaryKind !== "multipart_child",
+    )
+    .map((packageValue) => {
+      const multipartChildren =
+        packageValue.question.boundaryKind === "multipart_parent"
+          ? packageValue.question.childQuestionIds
+              .map((id) => packagesByQuestionId.get(id))
+              .filter(
+                (child): child is CanonicalQuestionPackageV2 => Boolean(child),
+              )
+          : [];
+      return projectPackage({
+        multipartChildren,
+        ownerBankId,
+        packageValue,
+      });
+    })
     .filter((value): value is V1ReviewDraftProjectionV2 => value !== null);
 }

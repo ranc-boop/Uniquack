@@ -7,6 +7,9 @@ import {
   qualityDispositionV2Schema,
   taxonomyFacetV2Schema,
   validationContextV2Schema,
+  type ApplicationEvidenceStateV2,
+  type ApplicationQuestionEvidenceV2,
+  type ApplicationVisualEvidenceV2,
   type CanonicalAnswerProposalV2,
   type CanonicalQuestionPackageV2,
   type CanonicalizationResultV2,
@@ -45,6 +48,9 @@ const INVALID_PROVIDER_CODES = new Set<ValidationFindingV2["code"]>([
   "taxonomy_candidate_invalid",
   "generation_evidence_invalid",
   "assessment_inconsistent",
+  "application_source_evidence_contradiction",
+  "question_application_evidence_invalid",
+  "visual_application_evidence_invalid",
   "question_limit_exceeded",
 ]);
 
@@ -58,6 +64,7 @@ const NEEDS_EVIDENCE_CODES = new Set<ValidationFindingV2["code"]>([
   "visual_association_ambiguous",
   "answer_source_unsupported",
   "solution_missing",
+  "application_source_evidence_ambiguous",
 ]);
 
 function finding(
@@ -136,6 +143,249 @@ function sourceSpanFindings(
   }
 
   return findings;
+}
+
+type ApplicationAssessment = {
+  evidenceState: ApplicationEvidenceStateV2;
+  sufficiency: DocumentExtractionProposalV2["assessment"]["sufficiency"];
+};
+
+function deriveApplicationAssessment(
+  context: ValidationContextV2,
+): ApplicationAssessment {
+  const evidence = context.applicationEvidence;
+  const kinds = new Set(evidence.questionEvidence.map((item) => item.kind));
+
+  if (
+    evidence.coverage === "unsupported" ||
+    context.source.sourceKind === "unsupported"
+  ) {
+    return {
+      evidenceState: "unsupported_source",
+      sufficiency: "unsupported_source",
+    };
+  }
+  if (
+    evidence.coverage === "partial" ||
+    evidence.coverage === "ambiguous" ||
+    kinds.has("ambiguous") ||
+    (kinds.has("question") &&
+      (kinds.has("incomplete_question") || kinds.has("answer_only")))
+  ) {
+    return {
+      evidenceState: "ambiguous",
+      sufficiency: "insufficient_evidence",
+    };
+  }
+  if (kinds.has("question")) {
+    return { evidenceState: "extractable", sufficiency: "extractable" };
+  }
+  if (kinds.has("incomplete_question") || kinds.has("answer_only")) {
+    return {
+      evidenceState: "insufficient_evidence",
+      sufficiency: "insufficient_evidence",
+    };
+  }
+  return { evidenceState: "no_questions", sufficiency: "no_questions" };
+}
+
+function questionEvidenceMatchesSpan(
+  evidence: ApplicationQuestionEvidenceV2,
+  span: SourceSpanProposalV2,
+) {
+  return (
+    span.pageStart === evidence.pageStart &&
+    span.pageEnd === evidence.pageEnd &&
+    (evidence.textFingerprintSha256 === null ||
+      span.textFingerprintSha256 === evidence.textFingerprintSha256)
+  );
+}
+
+function applicationQuestionEvidenceFindings({
+  context,
+  questions,
+  spansById,
+}: {
+  context: ValidationContextV2;
+  questions: QuestionBlockProposalV2[];
+  spansById: Map<string, SourceSpanProposalV2>;
+}) {
+  const findings: ValidationFindingV2[] = [];
+  const evidenceIdsByQuestion = new Map<string, string[]>();
+  const questionsByEvidenceId = new Map<string, QuestionBlockProposalV2[]>();
+  const evidenceById = new Map(
+    context.applicationEvidence.questionEvidence.map((item) => [item.id, item]),
+  );
+
+  for (const question of questions) {
+    const promptSpans = question.sourceSpanIds
+      .map((spanId) => spansById.get(spanId))
+      .filter((span): span is SourceSpanProposalV2 => Boolean(span));
+    const matched = context.applicationEvidence.questionEvidence.filter(
+      (evidence) =>
+        promptSpans.some((span) => questionEvidenceMatchesSpan(evidence, span)),
+    );
+    const matchedIds = Array.from(new Set(matched.map((item) => item.id)));
+    evidenceIdsByQuestion.set(question.id, matchedIds);
+
+    for (const id of matchedIds) {
+      const values = questionsByEvidenceId.get(id) ?? [];
+      values.push(question);
+      questionsByEvidenceId.set(id, values);
+    }
+
+    const hasQuestionEvidence = matched.some((item) => item.kind === "question");
+    const hasAmbiguousEvidence = matched.some(
+      (item) => item.kind === "ambiguous",
+    );
+    if (
+      context.applicationEvidence.coverage === "ambiguous" ||
+      context.applicationEvidence.coverage === "partial" ||
+      hasAmbiguousEvidence
+    ) {
+      findings.push(
+        matchedIds.length > 0
+          ? finding(
+              "application_source_evidence_ambiguous",
+              "question",
+              "warning",
+              [question.id, ...matchedIds],
+            )
+          : finding(
+              "question_application_evidence_invalid",
+              "question",
+              "error",
+              [question.id],
+            ),
+      );
+    } else if (!hasQuestionEvidence) {
+      findings.push(
+        finding(
+          "question_application_evidence_invalid",
+          "question",
+          "error",
+          [question.id, ...matchedIds],
+        ),
+      );
+    }
+  }
+
+  for (const [evidenceId, relatedQuestions] of questionsByEvidenceId) {
+    const evidence = evidenceById.get(evidenceId);
+    if (!evidence || relatedQuestions.length <= 1) continue;
+
+    const validSharedPrompt =
+      evidence.relationship === "shared_prompt" &&
+      relatedQuestions.every(
+        (question) => question.boundaryKind === "shared_prompt",
+      );
+    const parent = relatedQuestions.find(
+      (question) => question.boundaryKind === "multipart_parent",
+    );
+    const validMultipart =
+      evidence.relationship === "multipart" &&
+      parent !== undefined &&
+      relatedQuestions.every(
+        (question) =>
+          question.id === parent.id ||
+          (question.boundaryKind === "multipart_child" &&
+            question.parentQuestionId === parent.id &&
+            parent.childQuestionIds.includes(question.id)),
+      );
+    if (!validSharedPrompt && !validMultipart) {
+      findings.push(
+        finding(
+          "question_application_evidence_invalid",
+          "question",
+          "error",
+          [evidenceId, ...relatedQuestions.map((question) => question.id)],
+        ),
+      );
+    }
+  }
+
+  return { evidenceIdsByQuestion, findings };
+}
+
+function bboxMatches(
+  left: SourceSpanProposalV2["bbox"],
+  right: ApplicationVisualEvidenceV2["bbox"],
+) {
+  if (!left) return false;
+  return (["height", "width", "x", "y"] as const).every(
+    (key) => Math.abs(left[key] - right[key]) <= 0.000001,
+  );
+}
+
+function matchingApplicationVisualEvidence(
+  sourceSpan: SourceSpanProposalV2 | null,
+  context: ValidationContextV2,
+) {
+  if (
+    !sourceSpan ||
+    sourceSpan.pageStart === null ||
+    sourceSpan.pageEnd !== sourceSpan.pageStart
+  ) {
+    return null;
+  }
+  const matches = context.applicationEvidence.visualEvidence.filter(
+    (evidence) =>
+      evidence.page === sourceSpan.pageStart &&
+      bboxMatches(sourceSpan.bbox, evidence.bbox),
+  );
+  return matches.length === 1 ? matches[0]! : null;
+}
+
+function applicationVisualSupportsQuestions({
+  applicationVisualEvidence,
+  evidenceIdsByQuestion,
+  visual,
+}: {
+  applicationVisualEvidence: ApplicationVisualEvidenceV2 | null;
+  evidenceIdsByQuestion: Map<string, string[]>;
+  visual: VisualObjectProposalV2;
+}) {
+  if (!applicationVisualEvidence) return false;
+  if (visual.kind === "decorative") return true;
+  return visual.questionIds.every((questionId) =>
+    (evidenceIdsByQuestion.get(questionId) ?? []).some((evidenceId) =>
+      applicationVisualEvidence.questionEvidenceIds.includes(evidenceId),
+    ),
+  );
+}
+
+function questionPageRefsForVisual({
+  applicationVisualEvidence,
+  questionsById,
+  sourceSpansById,
+  visual,
+}: {
+  applicationVisualEvidence: ApplicationVisualEvidenceV2 | null;
+  questionsById: Map<string, QuestionBlockProposalV2>;
+  sourceSpansById: Map<string, SourceSpanProposalV2>;
+  visual: VisualObjectProposalV2;
+}) {
+  return Array.from(
+    new Set([
+      ...visual.questionIds.flatMap((questionId) => {
+        const question = questionsById.get(questionId);
+        return question
+          ? question.sourceSpanIds.flatMap((spanId) => {
+              const span = sourceSpansById.get(spanId);
+              if (span?.pageStart === null || span?.pageStart === undefined) {
+                return [];
+              }
+              const pageEnd = span.pageEnd ?? span.pageStart;
+              return Array.from(
+                { length: pageEnd - span.pageStart + 1 },
+                (_, index) => span.pageStart! + index,
+              );
+            })
+          : [];
+      }),
+      ...(applicationVisualEvidence ? [applicationVisualEvidence.page] : []),
+    ]),
+  );
 }
 
 function questionBoundaryFindings(
@@ -487,19 +737,21 @@ function taxonomyFindings(
 }
 
 function dispositionFromFindings({
+  evidenceState,
   findings,
-  sufficiency,
 }: {
+  evidenceState: ApplicationEvidenceStateV2;
   findings: ValidationFindingV2[];
-  sufficiency: DocumentExtractionProposalV2["assessment"]["sufficiency"];
 }): QualityDispositionV2 {
   const codes = Array.from(new Set(findings.map((item) => item.code)));
   let status: QualityDispositionV2["status"] = "review_ready";
 
-  if (sufficiency !== "extractable") {
-    status = "insufficient_source";
-  } else if (findings.some((item) => INVALID_PROVIDER_CODES.has(item.code))) {
+  if (findings.some((item) => INVALID_PROVIDER_CODES.has(item.code))) {
     status = "invalid_provider_output";
+  } else if (evidenceState === "ambiguous") {
+    status = "needs_more_evidence";
+  } else if (evidenceState !== "extractable") {
+    status = "insufficient_source";
   } else if (findings.some((item) => NEEDS_EVIDENCE_CODES.has(item.code))) {
     status = "needs_more_evidence";
   }
@@ -521,7 +773,7 @@ function safeSchemaIssues(error: { issues: Array<{ path: PropertyKey[] }> }) {
             typeof segment === "number" ? "index" : String(segment),
           )
           .join(".");
-        return `provider_schema_invalid:${safePath || "root"}`;
+        return `provider_schema_invalid:${safePath || "root"}`.slice(0, 100);
       }),
     ),
   );
@@ -534,28 +786,18 @@ function canonicalVisualObject(
   context: ValidationContextV2,
 ) {
   const sourceSpan = visual.sourceSpanId
-    ? sourceSpansById.get(visual.sourceSpanId)
+    ? (sourceSpansById.get(visual.sourceSpanId) ?? null)
     : null;
-  const questionPageRefs = Array.from(
-    new Set(
-      [
-        ...visual.questionIds.flatMap((questionId) => {
-          const question = questionsById.get(questionId);
-          return question
-            ? question.sourceSpanIds.flatMap((spanId) => {
-                const span = sourceSpansById.get(spanId);
-                return span?.pageStart !== null && span?.pageStart !== undefined
-                  ? [span.pageStart]
-                  : [];
-              })
-            : [];
-        }),
-        ...(sourceSpan?.pageStart !== null && sourceSpan?.pageStart !== undefined
-          ? [sourceSpan.pageStart]
-          : []),
-      ],
-    ),
+  const applicationVisualEvidence = matchingApplicationVisualEvidence(
+    sourceSpan,
+    context,
   );
+  const questionPageRefs = questionPageRefsForVisual({
+    applicationVisualEvidence,
+    questionsById,
+    sourceSpansById,
+    visual,
+  });
   const adapter = validateV2VisualWithMatureKernel({
     availablePageNumbers: context.source.availablePageNumbers,
     pageCount: context.source.pageCount,
@@ -566,6 +808,7 @@ function canonicalVisualObject(
 
   return {
     ...visual,
+    applicationEvidenceId: applicationVisualEvidence?.id ?? null,
     authority: "application_validated" as const,
     deterministicCropProposalKey: adapter.deterministicCropProposalKey,
     persistentAssetIdentity: null,
@@ -669,6 +912,14 @@ function validateProposal(
   const questionsById = new Map(
     proposal.questionBlocks.map((question) => [question.id, question]),
   );
+  const applicationAssessment = deriveApplicationAssessment(context);
+  const applicationQuestionValidation =
+    applicationQuestionEvidenceFindings({
+      context,
+      questions: proposal.questionBlocks,
+      spansById: validSpansById,
+    });
+  findings.push(...applicationQuestionValidation.findings);
 
   for (const question of proposal.questionBlocks) {
     addDuplicateFindings(
@@ -744,6 +995,19 @@ function validateProposal(
   const invalidVisualIds = new Set<string>();
   for (const visual of proposal.visualObjects) {
     const visualFindings: ValidationFindingV2[] = [];
+    const sourceSpan = visual.sourceSpanId
+      ? (validSpansById.get(visual.sourceSpanId) ?? null)
+      : null;
+    const applicationVisualEvidence = matchingApplicationVisualEvidence(
+      sourceSpan,
+      context,
+    );
+    const applicationAssociationValid = applicationVisualSupportsQuestions({
+      applicationVisualEvidence,
+      evidenceIdsByQuestion:
+        applicationQuestionValidation.evidenceIdsByQuestion,
+      visual,
+    });
     if (
       visual.sourceSpanId !== null &&
       !validSpansById.has(visual.sourceSpanId)
@@ -821,6 +1085,55 @@ function validateProposal(
         ),
       );
     }
+    if (visual.kind !== "missing" && applicationVisualEvidence === null) {
+      visualFindings.push(
+        finding(
+          "visual_application_evidence_invalid",
+          "visual",
+          "error",
+          [visual.id, ...visual.questionIds],
+        ),
+      );
+    }
+    if (applicationVisualEvidence) {
+      const kindMatches =
+        visual.kind === "ambiguous" ||
+        applicationVisualEvidence.kind === "ambiguous" ||
+        visual.kind === applicationVisualEvidence.kind;
+      if (!kindMatches) {
+        visualFindings.push(
+          finding(
+            "visual_application_evidence_invalid",
+            "visual",
+            "error",
+            [visual.id, applicationVisualEvidence.id, ...visual.questionIds],
+          ),
+        );
+      } else if (
+        visual.kind === "ambiguous" ||
+        applicationVisualEvidence.kind === "ambiguous"
+      ) {
+        visualFindings.push(
+          finding(
+            "visual_association_ambiguous",
+            "visual",
+            "warning",
+            [visual.id, applicationVisualEvidence.id, ...visual.questionIds],
+          ),
+        );
+      }
+
+      if (!applicationAssociationValid) {
+        visualFindings.push(
+          finding(
+            "visual_application_evidence_invalid",
+            "visual",
+            "error",
+            [visual.id, applicationVisualEvidence.id, ...visual.questionIds],
+          ),
+        );
+      }
+    }
     for (const questionId of visual.questionIds) {
       if (!questionsById.has(questionId)) {
         visualFindings.push(
@@ -830,6 +1143,28 @@ function validateProposal(
           ]),
         );
       }
+    }
+    const matureValidation = validateV2VisualWithMatureKernel({
+      availablePageNumbers: context.source.availablePageNumbers,
+      pageCount: context.source.pageCount,
+      questionPageRefs: questionPageRefsForVisual({
+        applicationVisualEvidence: applicationAssociationValid
+          ? applicationVisualEvidence
+          : null,
+        questionsById,
+        sourceSpansById: validSpansById,
+        visual,
+      }),
+      sourceSpan,
+      visual,
+    });
+    if (!matureValidation.valid) {
+      visualFindings.push(
+        finding("visual_reference_invalid", "visual", "error", [
+          visual.id,
+          ...visual.questionIds,
+        ]),
+      );
     }
     if (visualFindings.some((item) => item.severity === "error")) {
       invalidVisualIds.add(visual.id);
@@ -1015,21 +1350,61 @@ function validateProposal(
 
   const hasQuestions = proposal.questionBlocks.length > 0;
   const hasPackages = proposal.questionPackages.length > 0;
-  const assessmentInconsistent =
+  const providerAssessmentInconsistent =
     (proposal.assessment.sufficiency === "extractable" &&
       (!hasQuestions || !hasPackages)) ||
-    (proposal.assessment.sufficiency === "no_questions" &&
+    (proposal.assessment.sufficiency !== "extractable" &&
       (hasQuestions || hasPackages)) ||
     (proposal.assessment.sufficiency === "unsupported_source" &&
       context.source.sourceKind !== "unsupported") ||
     (context.source.sourceKind === "unsupported" &&
       proposal.assessment.sufficiency !== "unsupported_source");
-  if (assessmentInconsistent) {
+  if (providerAssessmentInconsistent) {
     findings.push(finding("assessment_inconsistent", "document", "error"));
+  }
+
+  const applicationAssessmentContradicted =
+    (applicationAssessment.evidenceState === "extractable" &&
+      (proposal.assessment.sufficiency !== "extractable" ||
+        !hasQuestions ||
+        !hasPackages)) ||
+    (applicationAssessment.evidenceState === "no_questions" &&
+      (proposal.assessment.sufficiency !== "no_questions" ||
+        hasQuestions ||
+        hasPackages)) ||
+    (applicationAssessment.evidenceState === "insufficient_evidence" &&
+      (proposal.assessment.sufficiency !== "insufficient_evidence" ||
+        hasQuestions ||
+        hasPackages)) ||
+    (applicationAssessment.evidenceState === "unsupported_source" &&
+      (proposal.assessment.sufficiency !== "unsupported_source" ||
+        hasQuestions ||
+        hasPackages)) ||
+    (applicationAssessment.evidenceState === "ambiguous" &&
+      proposal.assessment.sufficiency === "unsupported_source");
+  if (applicationAssessmentContradicted) {
+    findings.push(
+      finding(
+        "application_source_evidence_contradiction",
+        "document",
+        "error",
+      ),
+    );
+  } else if (applicationAssessment.evidenceState === "ambiguous") {
+    findings.push(
+      finding(
+        "application_source_evidence_ambiguous",
+        "document",
+        "warning",
+      ),
+    );
   }
 
   return {
     findings,
+    applicationAssessment,
+    applicationEvidenceIdsByQuestion:
+      applicationQuestionValidation.evidenceIdsByQuestion,
     invalidVisualFactIds,
     invalidVisualIds,
     proposalPackagesByQuestion,
@@ -1046,6 +1421,8 @@ function buildCanonicalExtraction(
 ): DocumentExtractionV2 {
   const validation = validateProposal(proposal, context);
   const {
+    applicationAssessment,
+    applicationEvidenceIdsByQuestion,
     findings,
     invalidVisualFactIds,
     invalidVisualIds,
@@ -1080,8 +1457,8 @@ function buildCanonicalExtraction(
 
     const packageFindings = questionRelatedFindings(findings, question);
     const disposition = dispositionFromFindings({
+      evidenceState: applicationAssessment.evidenceState,
       findings: packageFindings,
-      sufficiency: proposal.assessment.sufficiency,
     });
     if (disposition.status === "invalid_provider_output") continue;
 
@@ -1124,6 +1501,8 @@ function buildCanonicalExtraction(
       },
       question: {
         ...question,
+        applicationEvidenceIds:
+          applicationEvidenceIdsByQuestion.get(question.id) ?? [],
         authority: "application_validated",
         version: "question_block_v2",
       },
@@ -1149,21 +1528,22 @@ function buildCanonicalExtraction(
   }
 
   if (
-    proposal.assessment.sufficiency === "extractable" &&
+    applicationAssessment.evidenceState === "extractable" &&
     canonicalPackages.length === 0
   ) {
     findings.push(finding("assessment_inconsistent", "document", "error"));
   }
 
   const documentDisposition = dispositionFromFindings({
+    evidenceState: applicationAssessment.evidenceState,
     findings: findings.filter(
       (item) =>
         item.scope === "document" ||
         item.scope === "source" ||
+        INVALID_PROVIDER_CODES.has(item.code) ||
         item.code === "duplicate_identifier" ||
         item.code === "question_limit_exceeded",
     ),
-    sufficiency: proposal.assessment.sufficiency,
   });
   const effectiveDocumentDisposition =
     documentDisposition.status === "review_ready" &&
@@ -1172,15 +1552,17 @@ function buildCanonicalExtraction(
       (item) => item.disposition.status === "needs_more_evidence",
     )
       ? dispositionFromFindings({
+          evidenceState: applicationAssessment.evidenceState,
           findings: [finding("required_visual_missing", "document", "warning")],
-          sufficiency: proposal.assessment.sufficiency,
         })
       : documentDisposition;
 
   return documentExtractionV2Schema.parse({
     assessment: {
-      ...proposal.assessment,
-      authority: "application_validated",
+      authority: "application",
+      evidenceState: applicationAssessment.evidenceState,
+      providerProposal: proposal.assessment,
+      sufficiency: applicationAssessment.sufficiency,
       version: "document_assessment_v2",
     },
     authority: "application",

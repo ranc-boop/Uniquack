@@ -182,6 +182,88 @@ function perfectMcqGold() {
   };
 }
 
+function buildTwoIndependentlyGroundedQuestionsWithVisual() {
+  const fixture = buildDevelopmentFixture("required_graph");
+  const firstQuestion = fixture.proposal.questionBlocks[0];
+  const firstPackage = fixture.proposal.questionPackages[0];
+  const spanById = new Map(
+    fixture.proposal.sourceSpans.map((span) => [span.id, span]),
+  );
+  const clonedSpanIds = new Map();
+
+  for (const spanId of [
+    "span-prompt",
+    "span-option-a",
+    "span-option-b",
+    "span-option-c",
+    "span-option-d",
+    "span-answer",
+    "span-solution",
+  ]) {
+    const source = structuredClone(spanById.get(spanId));
+    const nextId = `${spanId}-q2`;
+    source.id = nextId;
+    source.questionIds = ["q2"];
+    if (source.role === "prompt" || source.role === "option") {
+      source.pageStart = 4;
+      source.pageEnd = 4;
+    }
+    if (source.role === "prompt") {
+      source.textFingerprintSha256 = FIXTURE_HASHES.prompt2;
+    }
+    clonedSpanIds.set(spanId, nextId);
+    fixture.proposal.sourceSpans.push(source);
+  }
+
+  const secondQuestion = structuredClone(firstQuestion);
+  secondQuestion.id = "q2";
+  secondQuestion.visibleNumber = "2";
+  secondQuestion.requiredVisualIds = [];
+  secondQuestion.sourceSpanIds = [clonedSpanIds.get("span-prompt")];
+  secondQuestion.options = secondQuestion.options.map((option) => ({
+    ...option,
+    id: option.id.replace("q1", "q2"),
+    sourceSpanIds: option.sourceSpanIds.map((spanId) => clonedSpanIds.get(spanId)),
+  }));
+
+  const secondPackage = structuredClone(firstPackage);
+  secondPackage.questionId = "q2";
+  secondPackage.answer.selectedOptionIds = ["q2-option-a"];
+  secondPackage.answer.sourceSpanIds = [clonedSpanIds.get("span-answer")];
+  secondPackage.solution.conclusion.selectedOptionIds = ["q2-option-a"];
+  secondPackage.solution.conclusion.sourceSpanIds = [
+    clonedSpanIds.get("span-answer"),
+  ];
+  secondPackage.solution.sourceSpanIds = [clonedSpanIds.get("span-solution")];
+  secondPackage.solution.steps[0].id = "step-q2";
+  secondPackage.solution.steps[0].sourceSpanIds = [
+    clonedSpanIds.get("span-solution"),
+  ];
+  secondPackage.solution.steps[0].visualFactIds = [];
+  for (const decision of secondPackage.taxonomyDecisions) {
+    decision.evidenceSpanIds = [clonedSpanIds.get("span-prompt")];
+  }
+  for (const observations of Object.values(
+    secondPackage.generationRelevantFeatures,
+  )) {
+    for (const observation of observations) {
+      observation.evidenceSpanIds = [clonedSpanIds.get("span-prompt")];
+    }
+  }
+
+  fixture.proposal.questionBlocks.push(secondQuestion);
+  fixture.proposal.questionPackages.push(secondPackage);
+  fixture.context.applicationEvidence.questionEvidence.push({
+    id: "evidence-question-2",
+    kind: "question",
+    pageEnd: 4,
+    pageStart: 4,
+    relationship: "single",
+    textFingerprintSha256: FIXTURE_HASHES.prompt2,
+  });
+  return fixture;
+}
+
 test("development corpus covers every required category with independent rights-safe scenarios", () => {
   assert.equal(developmentCorpus.version, "ai_parsing_v2_development_corpus_v1");
   assert.match(developmentCorpus.rights, /Synthetic educational fixtures/);
@@ -272,7 +354,9 @@ test("all development scenarios complete the source-only fake vertical flow", ()
     const expectedDrafts =
       scenario.expectedDisposition === "review_ready" ||
       scenario.expectedDisposition === "needs_more_evidence"
-        ? scenario.expectedQuestionCount
+        ? scenario.fixtureKind === "multipart"
+          ? 1
+          : scenario.expectedQuestionCount
         : 0;
     assert.equal(result.reviewDrafts.length, expectedDrafts, scenario.id);
     for (const draft of result.reviewDrafts) {
@@ -669,6 +753,153 @@ test("semantic hard-boundary mutations fail closed with zero Draft projections",
   }
 });
 
+test("a Provider cannot reassign a real visual to a different real Question through self-consistent fields", () => {
+  const fixture = buildTwoIndependentlyGroundedQuestionsWithVisual();
+  const valid = runFakeAiParsingV2(structuredClone(fixture));
+  assert.equal(valid.reviewDrafts.length, 2);
+
+  fixture.proposal.questionBlocks[0].requiredVisualIds = [];
+  fixture.proposal.questionBlocks[1].requiredVisualIds = ["visual-1"];
+  fixture.proposal.sourceSpans.find(
+    (span) => span.id === "span-visual",
+  ).questionIds = ["q2"];
+  fixture.proposal.visualObjects[0].questionIds = ["q2"];
+  fixture.proposal.questionPackages[0].solution.steps[0].visualFactIds = [];
+  fixture.proposal.questionPackages[1].solution.steps[0].visualFactIds = [
+    "visual-fact-1",
+  ];
+
+  const reassigned = runFakeAiParsingV2(fixture);
+  assert.equal(
+    reassigned.canonicalization.extraction?.disposition.status,
+    "invalid_provider_output",
+  );
+  assert.ok(
+    reassigned.canonicalization.extraction?.findings.some(
+      (item) => item.code === "visual_application_evidence_invalid",
+    ),
+  );
+  assert.equal(reassigned.reviewDrafts.length, 0);
+});
+
+test("valid Question evidence cannot be silently downgraded by Provider abstention", () => {
+  const validSource = buildDevelopmentFixture("mcq");
+  const abstention = buildDevelopmentFixture("no_questions");
+  validSource.proposal = abstention.proposal;
+
+  const result = runFakeAiParsingV2(validSource);
+  assert.equal(
+    result.canonicalization.extraction?.disposition.status,
+    "invalid_provider_output",
+  );
+  assert.notEqual(
+    result.canonicalization.extraction?.assessment.sufficiency,
+    "no_questions",
+  );
+  assert.equal(
+    result.canonicalization.extraction?.assessment.providerProposal.sufficiency,
+    "no_questions",
+  );
+  assert.ok(
+    result.canonicalization.extraction?.findings.some(
+      (item) => item.code === "application_source_evidence_contradiction",
+    ),
+  );
+  assert.equal(result.reviewDrafts.length, 0);
+
+  const insufficient = buildDevelopmentFixture("mcq");
+  insufficient.proposal = buildDevelopmentFixture("insufficient_source").proposal;
+  const insufficientResult = runFakeAiParsingV2(insufficient);
+  assert.equal(
+    insufficientResult.canonicalization.extraction?.disposition.status,
+    "invalid_provider_output",
+  );
+  assert.equal(
+    insufficientResult.canonicalization.extraction?.assessment.evidenceState,
+    "extractable",
+  );
+  assert.equal(insufficientResult.reviewDrafts.length, 0);
+});
+
+test("application source evidence rejects false extraction and gates ambiguity", () => {
+  for (const sourceKind of ["answer_only_source", "unsupported_source"]) {
+    const fixture = buildDevelopmentFixture(sourceKind);
+    fixture.proposal = buildDevelopmentFixture("mcq").proposal;
+    const result = runFakeAiParsingV2(fixture);
+    assert.equal(
+      result.canonicalization.extraction?.disposition.status,
+      "invalid_provider_output",
+      sourceKind,
+    );
+    assert.equal(result.reviewDrafts.length, 0, sourceKind);
+  }
+
+  const ambiguous = runFakeAiParsingV2(
+    buildDevelopmentFixture("ambiguous_source_evidence"),
+  );
+  assert.equal(
+    ambiguous.canonicalization.extraction?.assessment.evidenceState,
+    "ambiguous",
+  );
+  assert.equal(
+    ambiguous.canonicalization.extraction?.assessment.sufficiency,
+    "insufficient_evidence",
+  );
+  assert.equal(
+    ambiguous.canonicalization.extraction?.disposition.status,
+    "needs_more_evidence",
+  );
+  assert.equal(ambiguous.reviewDrafts.length, 1);
+  assert.equal(ambiguous.reviewDrafts[0].reviewItem.status, "needs_more_evidence");
+
+  const ungroundedAmbiguous = buildDevelopmentFixture(
+    "ambiguous_source_evidence",
+  );
+  ungroundedAmbiguous.context.applicationEvidence.questionEvidence[0]
+    .textFingerprintSha256 = FIXTURE_HASHES.prompt2;
+  const ungroundedResult = runFakeAiParsingV2(ungroundedAmbiguous);
+  assert.equal(
+    ungroundedResult.canonicalization.extraction?.disposition.status,
+    "invalid_provider_output",
+  );
+  assert.equal(ungroundedResult.reviewDrafts.length, 0);
+});
+
+test("V1 mixed semantics project one multipart parent row rather than duplicate children", () => {
+  const fixture = buildDevelopmentFixture("multipart");
+  const result = runFakeAiParsingV2(fixture);
+  assert.equal(result.canonicalization.extraction?.questionPackages.length, 3);
+  assert.equal(result.reviewDrafts.length, 1);
+  assert.equal(result.reviewDrafts[0].question.question_type, "mixed");
+  assert.equal(result.reviewDrafts[0].question.answer_spec.kind, "mixed");
+  assert.deepEqual(
+    result.reviewDrafts[0].question.ai_metadata.multipartChildren.map(
+      (child) => child.id,
+    ),
+    ["q1a", "q1b"],
+  );
+  assert.match(result.reviewDrafts[0].question.content_source, /1\(a\)/);
+  assert.match(result.reviewDrafts[0].question.content_source, /1\(b\)/);
+  assert.ok(
+    result.reviewDrafts[0].question.ai_metadata.sourceLineage.some(
+      (span) => span.questionIds.includes("q1a") && span.questionIds.includes("q1b"),
+    ),
+  );
+
+  const childWarning = buildDevelopmentFixture("multipart");
+  childWarning.proposal.questionPackages.find(
+    (item) => item.questionId === "q1b",
+  ).solution = null;
+  const warned = runFakeAiParsingV2(childWarning);
+  assert.equal(warned.reviewDrafts.length, 1);
+  assert.equal(warned.reviewDrafts[0].reviewItem.status, "needs_more_evidence");
+  assert.ok(
+    warned.reviewDrafts[0].reviewItem.validation_warnings.includes(
+      "solution_missing",
+    ),
+  );
+});
+
 test("answer provenance, typed answers, and generation candidates remain explicit", () => {
   const provenanceByFixture = new Map([
     ["answer_provenance", "source_answer_key"],
@@ -704,9 +935,23 @@ test("answer provenance, typed answers, and generation candidates remain explici
   ).canonicalization.extraction.questionPackages[0].generationRelevantFeatures;
   assert.equal(generation.authority, "provider_proposal");
   assert.equal(generation.candidateStatus, "candidate_only");
-  assert.equal(generation.invariantCandidates[0].recurrenceEvidenceCount, 1);
+  assert.equal(
+    generation.invariantCandidates[0].providerObservedInstanceCount,
+    1,
+  );
+  assert.equal(
+    "recurrenceEvidenceCount" in generation.invariantCandidates[0],
+    false,
+  );
   assert.equal("blueprint" in generation, false);
   assert.equal("authoritativeInvariants" in generation, false);
+
+  const inflated = buildDevelopmentFixture("generation_parameter_invariant");
+  inflated.proposal.questionPackages[0].generationRelevantFeatures
+    .invariantCandidates[0].providerObservedInstanceCount = 2;
+  const inflatedResult = runFakeAiParsingV2(inflated);
+  assert.equal(inflatedResult.canonicalization.extraction, null);
+  assert.equal(inflatedResult.reviewDrafts.length, 0);
 });
 
 test("source sufficiency and visual-registry outcomes are application-derived", () => {
@@ -734,12 +979,32 @@ test("source sufficiency and visual-registry outcomes are application-derived", 
     [...shared.canonicalization.extraction.visualObjects[0].questionIds].sort(),
     ["q1", "q2"],
   );
+  assert.equal(
+    shared.canonicalization.extraction.visualObjects[0].applicationEvidenceId,
+    "evidence-visual-1",
+  );
   assert.ok(
     shared.canonicalization.extraction.questionPackages.every(
       (item) =>
         item.visualObjects.some((visual) => visual.id === "visual-shared") &&
         item.visualFacts.some((fact) => fact.id === "visual-fact-shared"),
     ),
+  );
+
+  const crossPageVisualFixture = buildDevelopmentFixture("required_graph");
+  crossPageVisualFixture.proposal.questionBlocks[0].boundaryKind =
+    "cross_page_continuation";
+  crossPageVisualFixture.proposal.sourceSpans.find(
+    (span) => span.id === "span-prompt",
+  ).pageEnd = 2;
+  crossPageVisualFixture.context.applicationEvidence.questionEvidence[0].pageEnd =
+    2;
+  const crossPageVisual = runFakeAiParsingV2(crossPageVisualFixture);
+  assert.equal(crossPageVisual.reviewDrafts.length, 1);
+  assert.equal(
+    crossPageVisual.canonicalization.extraction?.visualObjects[0]
+      .applicationEvidenceId,
+    "evidence-visual-1",
   );
 
   const missing = runFakeAiParsingV2(buildDevelopmentFixture("missing_visual"));

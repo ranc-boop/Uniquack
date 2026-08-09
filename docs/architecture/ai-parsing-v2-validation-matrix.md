@@ -27,10 +27,10 @@ the required categories and additional relationship mutations:
 
 | Area | Cases exercised | Required outcome |
 | --- | --- | --- |
-| Source assessment | text question, no questions, unsupported source, insufficient evidence, notes without Question, answer-only source | Truthful sufficiency and no fabricated Question |
+| Source assessment | text question, no questions, unsupported source, insufficient evidence, notes without Question, answer-only source, false abstention, false extraction, ambiguous preanalysis | Provider proposal reconciled with independent application evidence; no fabricated Question or false validated abstention |
 | Answers | MCQ answer key, explicit boolean/short answer, numeric unit/tolerance, worked solution, model-derived answer, conflicting answer, multipart | Typed answer and provenance checks; contradictions fail |
 | Boundaries | standalone, multipart parent/child, shared prompt, cross-page continuation, answer-key continuation, ambiguous | All local references resolve; impossible relations fail |
-| Visuals | one-to-one, one-to-many shared, many-to-one, decorative, answer-key visual, missing required, ambiguous, invalid box, fabricated fact, wrong association | Authoritative source only; decorative suppressed; missing required -> `needs_more_evidence`; unsafe associations fail |
+| Visuals | one-to-one, two-real-Question reassociation, one-to-many shared, many-to-one, cross-page, decorative, answer-key visual, missing required, ambiguous, invalid box, fabricated fact | Application-authorized source only; candidate page cannot self-authorize; decorative suppressed; missing required -> `needs_more_evidence`; unsafe associations fail |
 | Taxonomy | exact close sibling, abstention, wrong facet, broad parent, inactive/noncandidate/unknown ID | Exact active assignable effective-leaf candidate or abstain |
 | Generation evidence | parameter versus invariant, reasoning/solution observations, surface detail | Candidate-only evidence; surface detail never becomes a rule or Blueprint |
 | Ownership and review | Bank mismatch, Provider disposition, approval/publication/Assignment mutation | All hard-boundary escape counts remain zero |
@@ -45,7 +45,7 @@ fixture ID or literal.
 | Layer | Evidence | Result required |
 | --- | --- | --- |
 | Zod proposal parse | strict Provider-visible schema | Unknown authority/product fields rejected |
-| Application context parse | source, Bank, page, taxonomy and fingerprint allowlists | Invalid context returns bounded failure only |
+| Application context parse | source, Bank, page, Question/visual preanalysis, taxonomy and fingerprint allowlists | Invalid context returns bounded failure only |
 | Canonicalization | semantic reference and answer/solution checks | Invalid output remains `invalid_provider_output`; no projection |
 | Visual adapter | mature V1 proposal key and source/fake identity derivation | Same inputs are idempotent; no persistent identity without crop bytes |
 | Taxonomy adapter | runtime snapshot and effective-leaf candidate subset | Exactly five facets; unknown/broad/wrong-facet IDs rejected |
@@ -84,7 +84,7 @@ The fixed source/fake context report measures UTF-8 bytes, not Provider tokens:
 | --- | ---: |
 | Policy | 588 |
 | Instructions | 546 |
-| Provider-visible schema | 32,545 |
+| Provider-visible schema | 32,405 |
 | Taxonomy snapshot identity | 184 |
 | Candidate subset | 852 |
 | Source packet metadata | 256 |
@@ -92,10 +92,10 @@ The fixed source/fake context report measures UTF-8 bytes, not Provider tokens:
 | Source content | 172 |
 | Repair context | 0 |
 | Repeated source content | 0 |
-| Total request | 35,669 |
+| Total request | 35,529 |
 
 The comparable V1 Provider-schema source file is 5,904 bytes; the V2 schema is
-26,641 bytes larger in this local byte comparison. This is not a token or cost
+26,501 bytes larger in this local byte comparison. This is not a token or cost
 claim. Provider token counts are `NOT_MEASURED`. Structural repair repeats zero
 source bytes, and checkpoint replay performs zero inference.
 
@@ -130,8 +130,10 @@ contract version and a fresh source review before a call.
 
 Executed on the isolated Windows worktree at the source/fake P0 head:
 
-- V2 canonical foundation: 19/19 tests passed;
-- repository Node tests: 40/40 passed with 93.08% aggregate line coverage in
+- V2 canonical foundation: 23/23 tests passed, including two-real-Question
+  visual reassociation, false abstention, false extraction, ambiguous evidence,
+  single-row multipart projection, and non-authoritative recurrence;
+- repository Node tests: 44/44 passed with 93.03% aggregate line coverage in
   the exercised modules;
 - V1 immutable fingerprint: 82 files matched the frozen baseline/treatment
   anchors;
@@ -154,6 +156,12 @@ Executed on the isolated Windows worktree at the source/fake P0 head:
 - `npm ls` passed and `npm audit` reported zero vulnerabilities;
 - context-size and fingerprint reports passed with zero Provider calls and zero
   hosted operations.
+
+The context-size report's stale fixture import was corrected to the existing
+shared fixture module, making the documented report executable from the PR
+worktree. The intentional Provider-schema fingerprint changed only for the
+single-instance generation-observation field and is frozen in the foundation
+registry; corpus and holdout bytes remain unchanged.
 
 The official aggregate smoke reached an unchanged Windows
 `embedded-postgres` infrastructure failure (`initdb` restricted-token setup)
