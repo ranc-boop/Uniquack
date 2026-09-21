@@ -10,6 +10,10 @@ function assert(condition, message) {
   if (!condition) throw new Error(message);
 }
 
+function usesMessageKeys(source, ...keys) {
+  return keys.every((key) => source.includes(`"${key}"`));
+}
+
 async function read(relativePath) {
   return readFile(resolve(root, relativePath), "utf8");
 }
@@ -26,10 +30,14 @@ async function exists(relativePath) {
 const teacherRouteFiles = [
   "src/app/teacher/page.tsx",
   "src/app/teacher/banks/page.tsx",
+  "src/app/teacher/banks/new/page.tsx",
+  "src/app/teacher/banks/join/page.tsx",
   "src/app/teacher/banks/[bankId]/page.tsx",
   "src/app/teacher/banks/[bankId]/imports/page.tsx",
   "src/app/teacher/banks/[bankId]/review/page.tsx",
+  "src/app/teacher/banks/[bankId]/submissions/page.tsx",
   "src/app/teacher/banks/[bankId]/questions/page.tsx",
+  "src/app/teacher/banks/[bankId]/sources/page.tsx",
   "src/app/teacher/banks/[bankId]/blueprints/page.tsx",
   "src/app/teacher/blueprints/page.tsx",
   "src/app/teacher/blueprints/new/page.tsx",
@@ -55,9 +63,15 @@ const [
   nav,
   teacherHome,
   bankUi,
+  bankNew,
+  bankJoin,
+  bankContextNav,
   bankDetail,
   bankImports,
   bankReview,
+  bankSubmissions,
+  bankSources,
+  bankBlueprints,
   bankActions,
   bankPdfBurstActions,
   blueprintDetail,
@@ -80,9 +94,15 @@ const [
   ]).then((parts) => parts.join("\n")),
   read("src/app/teacher/page.tsx"),
   read("src/app/teacher/banks/bank-ui.tsx"),
+  read("src/app/teacher/banks/new/page.tsx"),
+  read("src/app/teacher/banks/join/page.tsx"),
+  read("src/components/teacher/bank-context-nav.tsx"),
   read("src/app/teacher/banks/[bankId]/page.tsx"),
   read("src/app/teacher/banks/[bankId]/imports/page.tsx"),
   read("src/app/teacher/banks/[bankId]/review/page.tsx"),
+  read("src/app/teacher/banks/[bankId]/submissions/page.tsx"),
+  read("src/app/teacher/banks/[bankId]/sources/page.tsx"),
+  read("src/app/teacher/banks/[bankId]/blueprints/page.tsx"),
   read("src/app/teacher/banks/actions.ts"),
   read("src/app/teacher/banks/pdf-burst-actions.ts"),
   read("src/app/teacher/blueprints/[blueprintId]/page.tsx"),
@@ -108,21 +128,25 @@ assert(
   "teacher navigation must expose a reliable active-route state",
 );
 assert(
-  [
-    "Home",
-    "My Libraries",
-    "Public Library",
-    "Blueprints",
-    "Classrooms",
-    "Assignments",
-    "Progress",
-  ].every((label) => nav.includes(label)),
+  usesMessageKeys(
+    nav,
+    "teacher.home",
+    "teacher.myLibraries",
+    "teacher.publicLibrary",
+    "teacher.blueprints",
+    "teacher.classrooms",
+    "teacher.assignments",
+    "teacher.progress",
+  ),
   "teacher navigation must keep every major workflow visible",
 );
 assert(
-  teacherHome.includes("Next action") &&
-    teacherHome.includes("Libraries") &&
-    teacherHome.includes("Progress") &&
+  usesMessageKeys(
+    teacherHome,
+    "teacher.nextAction",
+    "teacher.libraries",
+    "teacher.progress",
+  ) &&
     teacherHome.includes("getTeacherHomeSummary") &&
     teacherHome.includes("/teacher/publish"),
   "teacher dashboard must keep the next Library action and three handoffs discoverable",
@@ -130,12 +154,186 @@ assert(
 console.log("PASS teacher navigation and dashboard handoffs are discoverable");
 
 assert(
-  bankUi.includes("AI drafts stay private until reviewed") &&
-    bankDetail.includes("Next action") &&
-    bankDetail.includes('label: "Ready"') &&
+  bankUi.includes("BankContextNav") &&
+    usesMessageKeys(
+      bankUi,
+      "teacherLibrary.questions",
+      "teacherLibrary.review",
+      "teacherLibrary.import",
+      "teacherLibrary.publicSubmissions",
+      "teacherLibrary.blueprints",
+      "teacherLibrary.members",
+      "teacherLibrary.sources",
+    ) &&
+    usesMessageKeys(
+      bankNew,
+      "teacherLibrary.createLibrary",
+      "teacherLibrary.teacherOwnedLibraryHeading",
+      "teacherLibrary.teacherOwnedLibraryDescription",
+      "teacherLibrary.libraryDetails",
+      "teacherLibrary.privateLibrariesDefault",
+      "teacherLibrary.libraryName",
+      "teacherLibrary.libraryNamePlaceholder",
+      "teacherLibrary.description",
+      "teacherLibrary.libraryDescriptionPlaceholder",
+      "teacherLibrary.visibility",
+      "teacherLibrary.visibilityPrivate",
+      "teacherLibrary.privateVisibilityDescription",
+      "teacherLibrary.visibilityShared",
+      "teacherLibrary.sharedVisibilityDescription",
+      "teacherLibrary.visibilityOrganization",
+      "teacherLibrary.organizationVisibilityDescription",
+      "teacherLibrary.libraryCreationNotice",
+      "teacherLibrary.creatingLibrary",
+      "common.cancel",
+    ) &&
+    usesMessageKeys(
+      bankJoin,
+      "teacherLibrary.joinByShareCode",
+      "teacherLibrary.joinSharedLibrary",
+      "teacherLibrary.joinSharedLibraryDescription",
+      "teacherLibrary.libraryCollaborationCode",
+      "teacherLibrary.libraryCollaborationDescription",
+      "teacherLibrary.shareCode",
+      "teacherLibrary.studentJoinCodeWarning",
+      "teacherLibrary.backToLibraries",
+      "teacherLibrary.joiningLibrary",
+      "teacherLibrary.joinLibrary",
+    ) &&
+    usesMessageKeys(
+      bankContextNav,
+      "teacherLibrary.libraryNavigation",
+      "teacherLibrary.libraryWorkflow",
+      "teacherLibrary.more",
+      "teacherLibrary.libraryMenu",
+      "teacherLibrary.openingPage",
+    ) &&
+    usesMessageKeys(
+      bankDetail,
+      "teacherLibrary.libraryUnavailable",
+      "teacherLibrary.nextAction",
+      "teacherLibrary.createAssignment",
+      "teacherLibrary.draftCount",
+      "teacherLibrary.readyCount",
+      "teacherLibrary.addQuestions",
+      "teacherLibrary.libraryWork",
+      "teacherLibrary.visibilityOrganization",
+      "teacherLibrary.visibilityPrivate",
+      "teacherLibrary.visibilityLegacyPublic",
+      "teacherLibrary.visibilityShared",
+      "teacherLibrary.owner",
+      "teacherLibrary.editor",
+      "teacherLibrary.viewer",
+    ) &&
+    bankDetail.includes("formatNumber") &&
     bankImports.includes("TeacherPdfBurstUpload") &&
-    bankImports.includes("Review is required before assignment") &&
-    bankReview.includes("Approve current page") &&
+    usesMessageKeys(
+      bankImports,
+      "teacherLibrary.createQuestion",
+      "teacherLibrary.importStructuredDrafts",
+      "teacherLibrary.importedPrivateReviewDrafts",
+      "teacherLibrary.uploadPdfReviewDrafts",
+      "teacherLibrary.aiParsingServerSide",
+      "teacherLibrary.aiPdfParsingUnavailable",
+      "teacherLibrary.adminEnableAiProvider",
+      "teacherLibrary.reviewGateNotice",
+    ) &&
+    usesMessageKeys(
+      bankReview,
+      "teacherLibrary.approveCurrentPage",
+      "teacherLibrary.approvalResponsibility",
+      "teacherLibrary.resultsPage",
+      "teacherLibrary.moreActionsFor",
+    ) &&
+    usesMessageKeys(
+      bankSubmissions,
+      "teacherLibrary.publicSubmissions",
+      "teacherLibrary.publicSubmissionsReadOnly",
+      "teacherLibrary.publicSubmissionsMigrationNotice",
+      "teacherLibrary.submissionHistory",
+      "teacherLibrary.searchSnapshots",
+      "teacherLibrary.questionTitleOrCode",
+      "teacherLibrary.allStatuses",
+      "teacherLibrary.filter",
+      "teacherLibrary.questionSnapshot",
+      "teacherLibrary.submitted",
+      "teacherLibrary.reviewNote",
+      "teacherLibrary.action",
+      "teacherLibrary.untitledSnapshot",
+      "teacherLibrary.withdrawingSubmission",
+      "teacherLibrary.withdraw",
+      "teacherLibrary.viewPublicCopy",
+      "teacherLibrary.resultsPage",
+      "teacherLibrary.noPublicSubmissionsDescription",
+      "teacherLibrary.publicSubmissionStatusAccepted",
+      "teacherLibrary.publicSubmissionStatusChangesRequested",
+      "teacherLibrary.publicSubmissionStatusInReview",
+      "teacherLibrary.publicSubmissionStatusPending",
+      "teacherLibrary.publicSubmissionStatusRejected",
+      "teacherLibrary.publicSubmissionStatusWithdrawn",
+    ) &&
+    bankSubmissions.includes("formatDateTime(locale") &&
+    bankSubmissions.includes("formatNumber(locale") &&
+    usesMessageKeys(
+      bankSources,
+      "teacherLibrary.setupNeeded",
+      "teacherLibrary.sourceLineageUnavailable",
+      "teacherLibrary.sourceLineageMigrationNotice",
+      "teacherLibrary.backToLibraries",
+      "teacherLibrary.recentSourceActivity",
+      "teacherLibrary.sourceActivityDescription",
+      "teacherLibrary.unknown",
+      "teacherLibrary.sourceBatchReference",
+      "teacherLibrary.noSourceActivity",
+      "teacherLibrary.noSourceActivityDescription",
+    ) &&
+    bankSources.includes("formatDate(locale") &&
+    usesMessageKeys(
+      bankBlueprints,
+      "teacherLibrary.setupNeeded",
+      "teacherLibrary.blueprintLinksUnavailable",
+      "teacherLibrary.blueprintLinksMigration",
+      "teacherLibrary.backToLibraries",
+      "teacherLibrary.createBlueprint",
+      "teacherLibrary.openBlueprintLibrary",
+      "teacherLibrary.linkedBlueprintsDescription",
+      "teacherLibrary.blueprintsLinkedToLibrary",
+      "teacherLibrary.libraryLinkedPlanningAsset",
+      "teacherLibrary.kind",
+      "teacherLibrary.taxonomy",
+      "teacherLibrary.sourceExamples",
+      "teacherLibrary.readiness",
+      "teacherLibrary.needsPlanning",
+      "teacherLibrary.previewReady",
+      "teacherLibrary.openBlueprint",
+      "teacherLibrary.noLinkedBlueprints",
+      "teacherLibrary.noLinkedBlueprintsDescription",
+      "teacherLibrary.createBlueprintFromLibrary",
+      "teacherLibrary.blueprintRelationGeneratedFromLibrary",
+      "teacherLibrary.blueprintRelationImportedToLibrary",
+      "teacherLibrary.blueprintRelationLinked",
+      "teacherLibrary.blueprintVisibilityOrganization",
+      "teacherLibrary.blueprintVisibilityPrivate",
+      "teacherLibrary.blueprintVisibilityPublicReview",
+      "teacherLibrary.blueprintVisibilityShared",
+      "teacherLibrary.blueprintKindLibraryGenerated",
+      "teacherLibrary.blueprintKindCourseBuilder",
+      "teacherLibrary.blueprintKindImported",
+      "teacherLibrary.blueprintKindManual",
+      "teacherLibrary.blueprintStatusApproved",
+      "teacherLibrary.blueprintStatusArchived",
+      "teacherLibrary.blueprintStatusDeprecated",
+      "teacherLibrary.blueprintStatusNeedsEvidence",
+      "teacherLibrary.blueprintStatusDraft",
+      "teacherLibrary.blueprintStatusRejected",
+      "teacherLibrary.blueprintStatusTrash",
+      "teacherLibrary.noTaxonomyTargets",
+    ) &&
+    !bankBlueprints.includes("bankBlueprintRelationLabel(") &&
+    !bankBlueprints.includes("blueprintVisibilityLabel(") &&
+    !bankBlueprints.includes("blueprintKindLabel(") &&
+    !bankBlueprints.includes("blueprintStatusLabel(") &&
+    bankBlueprints.includes("formatNumber(locale") &&
     bankReview.includes("LazyTeacherQuestionPreview") &&
     bankActions.includes("approveBankReviewQuestion") &&
     bankActions.includes("markBankReviewDraftNeedsFix") &&
@@ -158,11 +356,16 @@ assert(
   "Blueprint output must remain Review Draft gated with safe failure recovery",
 );
 assert(
-  publishPage.includes("Library") &&
+  usesMessageKeys(
+    publishPage,
+    "assignment.createDescription",
+    "assignment.noReadyQuestionsDescription",
+  ) &&
     publishPage.includes("AssignmentComposerFlow") &&
     publishPage.includes("LazyTeacherQuestionPreview") &&
-    publishActions.includes("Only Library owners and editors can create assignments") &&
-    publishActions.includes('.eq("status", "active")'),
+    publishActions.includes('new AssignmentInputError("forbidden", "form")') &&
+    publishActions.includes('.eq("status", "active")') &&
+    !publishActions.includes("error.message"),
   "Publish Center must use approved bank content and active classroom targets only",
 );
 console.log("PASS teacher content handoffs preserve bank scope and review gates");
@@ -177,13 +380,14 @@ assert(
   "classroom operations must preserve roster-only membership and bank separation",
 );
 assert(
-  classroomAnalytics.includes("assignment detail already supports") &&
-    classroomAnalytics.includes("Assignment feedback") &&
-    !classroomAnalytics.includes("Teacher feedback drafting is a later workflow") &&
-    classroomOverview.includes("available from assignment detail") &&
-    !classroomOverview.includes("feedback drafting are planned") &&
-    progressPage.includes("Needs attention") &&
-    progressPage.includes("Private self-study") &&
+  classroomAnalytics.includes('href="/teacher/progress"') &&
+    classroomAnalytics.includes("linkedPracticeSessionCount") &&
+    classroomOverview.includes("/analytics") &&
+    usesMessageKeys(
+      progressPage,
+      "teacher.progressNeedsAttention",
+      "teacher.progressEvidenceBoundary",
+    ) &&
     !progressPage.includes("Teacher feedback notes are coming later"),
   "Progress and Classroom Analytics must accurately point teachers to live feedback",
 );
@@ -192,7 +396,7 @@ assert(
     feedbackActions.includes("savePrivateTeacherFeedbackNote") &&
     feedbackHelper.includes('"sent_to_student"') &&
     feedbackHelper.includes('"sent"') &&
-    studentWorkDetail.includes("Teacher feedback"),
+    usesMessageKeys(studentWorkDetail, "work.teacherFeedback"),
   "teacher feedback must remain assignment-scoped and student-visible only when sent",
 );
 console.log("PASS classroom, evidence, and feedback boundaries are present");

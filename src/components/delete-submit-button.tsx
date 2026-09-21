@@ -4,12 +4,14 @@ import { Trash2 } from "lucide-react";
 import { useFormStatus } from "react-dom";
 
 import { Button } from "@/components/ui/button";
+import { useLocale } from "@/components/i18n/locale-provider";
 
 type DeleteSubmitButtonProps = {
   label: string;
 };
 
 export function DeleteSubmitButton({ label }: DeleteSubmitButtonProps) {
+  const { t } = useLocale();
   const { pending } = useFormStatus();
 
   return (
@@ -19,13 +21,13 @@ export function DeleteSubmitButton({ label }: DeleteSubmitButtonProps) {
       variant="destructive"
       disabled={pending}
       onClick={(event) => {
-        if (!window.confirm(`Delete ${label}? This cannot be undone.`)) {
+        if (!window.confirm(t("common.deleteConfirm", { label }))) {
           event.preventDefault();
         }
       }}
     >
       <Trash2 className="size-4" />
-      <span className="sr-only">Delete {label}</span>
+      <span className="sr-only">{t("common.delete")} {label}</span>
     </Button>
   );
 }

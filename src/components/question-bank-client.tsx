@@ -6,6 +6,7 @@ import { useMemo, useState, useTransition } from "react";
 import { BookOpen, Check, ClipboardList, LoaderCircle, Play, Plus, X } from "lucide-react";
 
 import { FeedbackText } from "@/components/math-content";
+import { useLocale } from "@/components/i18n/locale-provider";
 import {
   TaxonomyTagChips,
   type TaxonomyTagChipAssignment,
@@ -70,6 +71,7 @@ export function QuestionBankClient({
   taxonomyTagsByQuestionId,
   totalCount,
 }: QuestionBankClientProps) {
+  const { formatNumber, t } = useLocale();
   const router = useRouter();
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [busyLabel, setBusyLabel] = useState<string | null>(null);
@@ -133,8 +135,8 @@ export function QuestionBankClient({
           JSON.stringify(round),
         );
         router.push("/practice");
-      } catch (caught) {
-        setError(caught instanceof Error ? caught.message : String(caught));
+      } catch {
+        setError(t("common.requestFailed"));
         setBusyLabel(null);
       }
     });
@@ -149,11 +151,11 @@ export function QuestionBankClient({
               <ClipboardList className="size-5 text-sky-700" aria-hidden="true" />
             </div>
             <div className="min-w-0 space-y-1">
-              <p className="text-base font-bold text-slate-950">Question basket</p>
+              <p className="text-base font-bold text-slate-950">{t("library.basket")}</p>
               <p className="text-sm leading-6 text-slate-600">
                 {selectedIds.length
-                  ? `${selectedIds.length} selected for a custom practice round.`
-                  : `Choose from ${totalCount} published questions, then practice them in your current session.`}
+                  ? t("library.basketSelected", { count: formatNumber(selectedIds.length) })
+                  : t("library.basketEmpty", { count: formatNumber(totalCount) })}
               </p>
               {selectedQuestions.length ? (
                 <div className="flex flex-wrap gap-1.5 pt-1">
@@ -181,7 +183,7 @@ export function QuestionBankClient({
               ) : (
                 <Play className="mr-2 size-4" aria-hidden="true" />
               )}
-              Practice basket
+              {t("library.practiceBasket")}
             </Button>
             <Button
               className="w-full sm:w-auto"
@@ -191,7 +193,7 @@ export function QuestionBankClient({
               variant="outline"
             >
               <X className="mr-2 size-4" aria-hidden="true" />
-              Clear
+              {t("library.clear")}
             </Button>
           </div>
         </CardContent>
@@ -217,7 +219,7 @@ export function QuestionBankClient({
               <CardContent className="grid gap-4 p-4 md:grid-cols-[2rem_minmax(0,1fr)_auto] md:items-start">
                 <div className="flex items-center md:block">
                   <Checkbox
-                    aria-label={`Select ${question.question_code}`}
+                    aria-label={t("library.selectQuestion", { code: question.question_code })}
                     checked={isSelected}
                     onCheckedChange={() => toggleQuestion(question.id)}
                   />
@@ -228,12 +230,12 @@ export function QuestionBankClient({
                       {question.question_code}
                     </Badge>
                     <Badge className={difficultyTone(question.difficulty_rating)} variant="outline">
-                      Difficulty {question.difficulty_rating}
+                      {t("library.difficulty", { value: formatNumber(question.difficulty_rating) })}
                     </Badge>
                     {isSelected ? (
                       <Badge className="border-sky-200 bg-sky-50 text-sky-800" variant="outline">
                         <Check className="mr-1 size-3" aria-hidden="true" />
-                        In basket
+                        {t("library.inBasket")}
                       </Badge>
                     ) : null}
                   </div>
@@ -251,7 +253,7 @@ export function QuestionBankClient({
                   </div>
                   <TaxonomyTagChips
                     assignments={taxonomyTagsByQuestionId[question.id]}
-                    emptyLabel="No approved tags yet."
+                    emptyLabel={t("library.noApprovedTags")}
                     maxVisibleTags={4}
                     taxonomyCatalog={taxonomyCatalog}
                   />
@@ -260,7 +262,7 @@ export function QuestionBankClient({
                   <Button asChild className="w-full md:w-32" size="sm" variant="outline">
                     <Link href={`/questions/${question.id}`}>
                       <BookOpen className="mr-2 size-4" aria-hidden="true" />
-                      Open
+                      {t("common.open")}
                     </Link>
                   </Button>
                   <Button
@@ -275,7 +277,7 @@ export function QuestionBankClient({
                     ) : (
                       <Play className="mr-2 size-4" aria-hidden="true" />
                     )}
-                    Practice
+                    {t("student.practice")}
                   </Button>
                   <Button
                     className="w-full md:w-32"
@@ -285,7 +287,7 @@ export function QuestionBankClient({
                     variant={isSelected ? "secondary" : "outline"}
                   >
                     <Plus className="mr-2 size-4" aria-hidden="true" />
-                    {isSelected ? "Added" : "Add"}
+                    {isSelected ? t("library.added") : t("library.add")}
                   </Button>
                 </div>
               </CardContent>

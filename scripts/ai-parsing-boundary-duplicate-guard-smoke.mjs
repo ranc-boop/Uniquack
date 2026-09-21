@@ -265,8 +265,9 @@ assert(
 assert(
   dashboard.includes("QuestionBoundaryGuardCard") &&
     importUi.includes("QuestionBoundaryGuardCard") &&
-    reviewPage.includes("boundaryFindings") &&
-    reviewPage.includes("Possible duplicate") &&
+    importUi.includes('translate(locale, "teacherLibrary.warningsToInspect")') &&
+    reviewPage.includes("TeacherReviewGuidance") &&
+    questionBanks.includes("boundaryFindings") &&
     questionBanks.includes("questionBoundaryPlanByBatchId"),
   "admin status, teacher import status, and bank Review Draft cards must surface structural review guidance",
 );

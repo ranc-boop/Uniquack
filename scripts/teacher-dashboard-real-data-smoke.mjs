@@ -10,6 +10,10 @@ function assert(condition, message) {
   if (!condition) throw new Error(message);
 }
 
+function usesMessageKeys(source, ...keys) {
+  return keys.every((key) => source.includes(`"${key}"`));
+}
+
 async function read(relativePath) {
   return readFile(resolve(root, relativePath), "utf8");
 }
@@ -21,7 +25,7 @@ const smokeAll = await read("scripts/smoke-all.mjs");
 
 assert(
   page.includes("getTeacherHomeSummary") &&
-    page.includes("Next action") &&
+    usesMessageKeys(page, "teacher.nextAction") &&
     page.includes('href: "/teacher/banks"') &&
     page.includes('href: "/teacher/publish"') &&
     page.includes('href: "/teacher/progress"') &&
@@ -57,12 +61,18 @@ assert(
 );
 
 assert(
-  librariesPage.includes('placeholder="Search Libraries"') &&
+  usesMessageKeys(
+    librariesPage,
+    "teacher.searchLibraries",
+    "teacher.more",
+    "teacher.questions",
+    "teacher.review",
+    "teacher.ready",
+  ) &&
     librariesPage.includes("<details") &&
-    librariesPage.includes("More") &&
-    librariesPage.includes('["Questions", bank.questionCount]') &&
-    librariesPage.includes('["Review", bank.reviewDraftCount]') &&
-    librariesPage.includes('["Ready", bank.assignmentReadyCount]') &&
+    librariesPage.includes("bank.questionCount") &&
+    librariesPage.includes("bank.reviewDraftCount") &&
+    librariesPage.includes("bank.assignmentReadyCount") &&
     !librariesPage.includes("BankMetricCard") &&
     !librariesPage.includes("Library workbench") &&
     !librariesPage.includes("TeacherWorkspaceNav"),

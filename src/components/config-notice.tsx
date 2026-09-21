@@ -1,16 +1,18 @@
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { translate } from "@/lib/i18n/messages";
+import { getRequestLocale } from "@/lib/i18n/server";
 
-export function SupabaseConfigNotice() {
+export async function SupabaseConfigNotice() {
+  const locale = await getRequestLocale();
+
   return (
     <Card className="max-w-2xl">
       <CardHeader>
-        <CardTitle>Supabase is not configured</CardTitle>
+        <CardTitle>{translate(locale, "config.supabaseTitle")}</CardTitle>
       </CardHeader>
       <CardContent>
         <p className="text-sm text-muted-foreground">
-          Copy `.env.example` to `.env.local`, set
-          `NEXT_PUBLIC_SUPABASE_URL` and `NEXT_PUBLIC_SUPABASE_ANON_KEY`, then
-          apply the migration before testing auth and CRUD.
+          {translate(locale, "config.supabaseDescription")}
         </p>
       </CardContent>
     </Card>

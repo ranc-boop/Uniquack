@@ -24,6 +24,10 @@ function assert(condition, message) {
   if (!condition) throw new Error(message);
 }
 
+function usesMessageKeys(source, ...keys) {
+  return keys.every((key) => source.includes(`"${key}"`));
+}
+
 function summarizeSupabaseError(error) {
   if (!error) return "unknown error";
   return [error.message, error.code, error.details, error.hint].filter(Boolean).join(" | ");
@@ -106,26 +110,31 @@ async function runSourceSmoke() {
   const classroomStudents = await read("src/app/teacher/classrooms/[id]/students/page.tsx");
   const migration = await read("supabase/clean-migrations/0043_classroom_creation_rls_hardening.sql");
 
-  for (const label of [
-    "Home",
-    "My Libraries",
-    "Public Library",
-    "Blueprints",
-    "Classrooms",
-    "Assignments",
-    "Progress",
-  ]) {
-    assert(teacherNav.includes(label), `teacher nav missing ${label}`);
-  }
+  assert(
+    usesMessageKeys(
+      teacherNav,
+      "teacher.home",
+      "teacher.myLibraries",
+      "teacher.publicLibrary",
+      "teacher.blueprints",
+      "teacher.classrooms",
+      "teacher.assignments",
+      "teacher.progress",
+    ),
+    "teacher nav must expose the bank-first teacher destinations with localized labels",
+  );
 
   assert(!teacherNav.includes("/admin/imports/pdf"), "teacher nav must not route imports through admin");
   assert(!teacherNav.includes("/admin/review"), "teacher nav must not route review through admin");
   assert(
     teacherPage.includes("getTeacherHomeSummary") &&
-      teacherPage.includes("Next action") &&
-      teacherPage.includes('label: "Libraries"') &&
-      teacherPage.includes('label: "Assignments"') &&
-      teacherPage.includes('label: "Progress"') &&
+      usesMessageKeys(
+        teacherPage,
+        "teacher.nextAction",
+        "teacher.libraries",
+        "teacher.assignments",
+        "teacher.progress",
+      ) &&
       !teacherPage.includes("Bank-first teacher workflow"),
     "teacher dashboard must stay bank-first without duplicating global navigation or explanatory copy",
   );
@@ -140,17 +149,20 @@ async function runSourceSmoke() {
     "classroom creation must use the teacher classroom RPC",
   );
   assert(
-      classroomDetail.includes("Active join code") &&
-      classroomDetail.includes("Class delivery snapshot") &&
-      classroomUi.includes("Overview") &&
-      classroomUi.includes("Assignments") &&
-      classroomUi.includes("Students") &&
-      classroomUi.includes("Teachers") &&
-      classroomUi.includes("Progress") &&
-      classroomUi.includes("Blueprints") &&
-      classroomUi.includes("Settings") &&
+      classroomDetail.includes("classroomOverview.activeJoinCode") &&
+      classroomDetail.includes("classroomOverview.deliverySnapshot") &&
+      usesMessageKeys(
+        classroomUi,
+        "classroom.overview",
+        "classroom.assignments",
+        "classroom.students",
+        "classroom.teachers",
+        "classroom.progress",
+        "classroom.blueprints",
+        "classroom.settings",
+      ) &&
       classroomPeople.includes("/students") &&
-      classroomStudents.includes("Removing a student stops future classroom access") &&
+      classroomStudents.includes("classroomStudents.rosterDescription") &&
       classroomActions.includes("createClassroomJoinCode"),
     "classroom detail must expose teacher classroom sections and persistent join code recovery",
   );

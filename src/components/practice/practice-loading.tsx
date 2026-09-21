@@ -1,4 +1,7 @@
+"use client";
+
 import { LoadingIndicator } from "@/components/loading-indicator";
+import { useLocale } from "@/components/i18n/locale-provider";
 import { cn } from "@/lib/utils";
 
 export function PracticeLoadingBlock({ className }: { className?: string }) {
@@ -10,6 +13,8 @@ export function PracticeSessionLoadingOverlay({
 }: {
   action: "creating" | "switching";
 }) {
+  const { t } = useLocale();
+
   return (
     <section
       aria-busy="true"
@@ -18,7 +23,7 @@ export function PracticeSessionLoadingOverlay({
       role="status"
     >
       <LoadingIndicator
-        label={action === "creating" ? "Preparing a new practice session..." : "Switching practice session..."}
+        label={action === "creating" ? t("practice.preparingSession") : t("practice.switchingSession")}
         size="md"
       />
       <div className="space-y-3" aria-hidden="true">

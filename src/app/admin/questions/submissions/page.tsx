@@ -17,6 +17,8 @@ import {
 } from "@/components/ui/table";
 import { Textarea } from "@/components/ui/textarea";
 import { requireSuperAdmin } from "@/lib/auth/guards";
+import { formatDateTime as formatLocaleDateTime } from "@/lib/i18n/locale";
+import { getRequestLocale } from "@/lib/i18n/server";
 import { createClient } from "@/lib/supabase/server";
 import type { Json, PublicQuestionSubmissionStatus } from "@/types/database";
 
@@ -88,6 +90,7 @@ export default async function AdminPublicSubmissionsPage({
     searchParams,
     createClient(),
   ]);
+  const locale = await getRequestLocale();
   const q = (params.q ?? "").trim();
   const allowedStatuses: PublicQuestionSubmissionStatus[] = [
     "pending",
@@ -326,10 +329,10 @@ export default async function AdminPublicSubmissionsPage({
                                       {event.action_kind.replaceAll("_", " ")}
                                     </span>
                                     {" · "}
-                                    {new Intl.DateTimeFormat("en", {
+                                    {formatLocaleDateTime(locale, event.created_at, {
                                       dateStyle: "medium",
                                       timeStyle: "short",
-                                    }).format(new Date(event.created_at))}
+                                    })}
                                     {event.reason ? ` · ${event.reason}` : ""}
                                   </li>
                                 ))}

@@ -19,6 +19,9 @@ import {
   getTeacherQuestionBankDetail,
 } from "@/lib/question-banks";
 import { createClient } from "@/lib/supabase/server";
+import { formatDateTime, formatNumber } from "@/lib/i18n/locale";
+import { getRequestLocale } from "@/lib/i18n/server";
+import { translate } from "@/lib/i18n/messages";
 import type {
   Json,
   PublicQuestionSubmissionStatus,
@@ -41,25 +44,6 @@ function objectValue(value: Json): Record<string, Json | undefined> {
     : {};
 }
 
-function statusLabel(status: PublicQuestionSubmissionStatus) {
-  const labels: Record<PublicQuestionSubmissionStatus, string> = {
-    accepted: "Accepted",
-    changes_requested: "Changes requested",
-    in_review: "In review",
-    pending: "Pending",
-    rejected: "Rejected",
-    withdrawn: "Withdrawn",
-  };
-  return labels[status];
-}
-
-function formatDate(value: string) {
-  return new Intl.DateTimeFormat("en", {
-    dateStyle: "medium",
-    timeStyle: "short",
-  }).format(new Date(value));
-}
-
 export default async function TeacherPublicSubmissionsPage({
   params,
   searchParams,
@@ -68,6 +52,23 @@ export default async function TeacherPublicSubmissionsPage({
   searchParams: Promise<{ page?: string; q?: string; status?: string }>;
 }) {
   const profile = await requireTeacher();
+  const locale = await getRequestLocale();
+  const t = (
+    key: Parameters<typeof translate>[1],
+    values?: Parameters<typeof translate>[2],
+  ) => translate(locale, key, values);
+  const statusLabel = (value: PublicQuestionSubmissionStatus) => {
+    const labels: Record<PublicQuestionSubmissionStatus, string> = {
+      accepted: t("teacherLibrary.publicSubmissionStatusAccepted"),
+      changes_requested: t("teacherLibrary.publicSubmissionStatusChangesRequested"),
+      in_review: t("teacherLibrary.publicSubmissionStatusInReview"),
+      pending: t("teacherLibrary.publicSubmissionStatusPending"),
+      rejected: t("teacherLibrary.publicSubmissionStatusRejected"),
+      withdrawn: t("teacherLibrary.publicSubmissionStatusWithdrawn"),
+    };
+
+    return labels[value];
+  };
   const { bankId } = await params;
   const query = await searchParams;
   const supabase = await createClient();
@@ -158,7 +159,7 @@ export default async function TeacherPublicSubmissionsPage({
 
   return (
     <BankWorkbenchPage>
-      <BankHeroPanel subtitle={detail.bank.name} title="Public Submissions" />
+      <BankHeroPanel subtitle={detail.bank.name} title={t("teacherLibrary.publicSubmissions")} />
       <BankRouteTabs
         bankId={bankId}
         currentUserRole={detail.currentUserRole}
@@ -166,36 +167,34 @@ export default async function TeacherPublicSubmissionsPage({
 
       {!canManage ? (
         <section className="rounded-lg border bg-white p-6 text-sm text-muted-foreground">
-          Public submissions are available to Library owners and editors only.
-          Your viewer access remains read-only.
+          {t("teacherLibrary.publicSubmissionsReadOnly")}
         </section>
       ) : setupNeeded ? (
         <section className="rounded-lg border border-amber-200 bg-amber-50 p-6 text-sm text-amber-950">
-          Public submission governance needs clean migration 0055. No teacher
-          content has been published.
+          {t("teacherLibrary.publicSubmissionsMigrationNotice")}
         </section>
       ) : (
         <section className="overflow-hidden rounded-lg border bg-white shadow-sm">
-          <BankSectionHeader title="Submission history" />
+          <BankSectionHeader title={t("teacherLibrary.submissionHistory")} />
           <form className="grid gap-3 border-y p-4 md:grid-cols-[minmax(14rem,1fr)_13rem_auto]">
             <div className="space-y-2">
-              <Label htmlFor="submission-search">Search snapshots</Label>
+              <Label htmlFor="submission-search">{t("teacherLibrary.searchSnapshots")}</Label>
               <Input
                 defaultValue={query.q ?? ""}
                 id="submission-search"
                 name="q"
-                placeholder="Question title or code"
+                placeholder={t("teacherLibrary.questionTitleOrCode")}
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="submission-status">Status</Label>
+              <Label htmlFor="submission-status">{t("teacherLibrary.status")}</Label>
               <select
                 className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
                 defaultValue={status ?? ""}
                 id="submission-status"
                 name="status"
               >
-                <option value="">All statuses</option>
+                <option value="">{t("teacherLibrary.allStatuses")}</option>
                 {allowedStatuses.map((value) => (
                   <option key={value} value={value}>
                     {statusLabel(value)}
@@ -204,9 +203,11 @@ export default async function TeacherPublicSubmissionsPage({
               </select>
             </div>
             <div className="flex items-end gap-2">
-              <Button type="submit">Filter</Button>
+              <Button type="submit">{t("teacherLibrary.filter")}</Button>
               <Button asChild type="button" variant="outline">
-                <Link href={`/teacher/banks/${bankId}/submissions`}>Reset</Link>
+                <Link href={`/teacher/banks/${bankId}/submissions`}>
+                  {t("teacherLibrary.reset")}
+                </Link>
               </Button>
             </div>
           </form>
@@ -216,11 +217,11 @@ export default async function TeacherPublicSubmissionsPage({
                 <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead>Question snapshot</TableHead>
-                    <TableHead>Status</TableHead>
-                    <TableHead>Submitted</TableHead>
-                    <TableHead>Review note</TableHead>
-                    <TableHead>Action</TableHead>
+                    <TableHead>{t("teacherLibrary.questionSnapshot")}</TableHead>
+                    <TableHead>{t("teacherLibrary.status")}</TableHead>
+                    <TableHead>{t("teacherLibrary.submitted")}</TableHead>
+                    <TableHead>{t("teacherLibrary.reviewNote")}</TableHead>
+                    <TableHead>{t("teacherLibrary.action")}</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -236,7 +237,7 @@ export default async function TeacherPublicSubmissionsPage({
                       <TableRow key={submission.id}>
                         <TableCell>
                           <p className="font-semibold">
-                            {String(snapshot.title ?? "Untitled snapshot")}
+                            {String(snapshot.title ?? t("teacherLibrary.untitledSnapshot"))}
                           </p>
                           <p className="font-mono text-xs text-muted-foreground">
                             {String(snapshot.questionCode ?? submission.id)}
@@ -255,7 +256,7 @@ export default async function TeacherPublicSubmissionsPage({
                             {statusLabel(submission.status)}
                           </BankBadge>
                         </TableCell>
-                        <TableCell>{formatDate(submission.created_at)}</TableCell>
+                        <TableCell>{formatDateTime(locale, submission.created_at)}</TableCell>
                         <TableCell className="max-w-72 whitespace-normal">
                           {submission.review_reason ?? "—"}
                         </TableCell>
@@ -269,11 +270,11 @@ export default async function TeacherPublicSubmissionsPage({
                                 value={submission.id}
                               />
                               <FormSubmitButton
-                                pendingLabel="Withdrawing…"
+                                pendingLabel={t("teacherLibrary.withdrawingSubmission")}
                                 size="sm"
                                 variant="outline"
                               >
-                                Withdraw
+                                {t("teacherLibrary.withdraw")}
                               </FormSubmitButton>
                             </form>
                           ) : submission.published_question_id ? (
@@ -281,7 +282,7 @@ export default async function TeacherPublicSubmissionsPage({
                               <Link
                                 href={`/questions/${submission.published_question_id}`}
                               >
-                                View public copy
+                                {t("teacherLibrary.viewPublicCopy")}
                               </Link>
                             </Button>
                           ) : (
@@ -296,12 +297,15 @@ export default async function TeacherPublicSubmissionsPage({
               </div>
               <div className="flex items-center justify-between border-t p-4 text-sm">
                 <span>
-                  {total} result{total === 1 ? "" : "s"} · Page {page} of{" "}
-                  {totalPages}
+                  {t("teacherLibrary.resultsPage", {
+                    total: formatNumber(locale, total),
+                    page: formatNumber(locale, page),
+                    totalPages: formatNumber(locale, totalPages),
+                  })}
                 </span>
                 <div className="flex gap-2">
                   <Button asChild disabled={page <= 1} size="sm" variant="outline">
-                    <Link href={pageHref(Math.max(1, page - 1))}>Previous</Link>
+                    <Link href={pageHref(Math.max(1, page - 1))}>{t("teacherLibrary.previous")}</Link>
                   </Button>
                   <Button
                     asChild
@@ -309,15 +313,14 @@ export default async function TeacherPublicSubmissionsPage({
                     size="sm"
                     variant="outline"
                   >
-                    <Link href={pageHref(Math.min(totalPages, page + 1))}>Next</Link>
+                    <Link href={pageHref(Math.min(totalPages, page + 1))}>{t("teacherLibrary.next")}</Link>
                   </Button>
                 </div>
               </div>
             </>
           ) : (
             <div className="p-8 text-center text-sm text-muted-foreground">
-              No public submissions yet. The source question stays private until
-              you explicitly submit an assignment-ready snapshot.
+              {t("teacherLibrary.noPublicSubmissionsDescription")}
             </div>
           )}
         </section>

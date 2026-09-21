@@ -1,24 +1,28 @@
 import { StudentPendingLink } from "@/components/student/student-pending-link";
+import { translate } from "@/lib/i18n/messages";
+import { getRequestLocale } from "@/lib/i18n/server";
 
 type StudentWorkspaceNavItem = {
   href: string;
   label: string;
 };
 
-const studentWorkspaceNavItems: StudentWorkspaceNavItem[] = [
-  { href: "/student", label: "Dashboard" },
-  { href: "/student/work", label: "My Work" },
-  { href: "/student/classrooms", label: "My Classes" },
-  { href: "/practice", label: "Practice" },
-  { href: "/mistakes", label: "Mistakes" },
-  { href: "/student/public-library", label: "Public Library" },
-  { href: "/student/progress", label: "Progress / Feedback" },
-];
+export async function StudentWorkspaceNav() {
+  const locale = await getRequestLocale();
+  const t = (key: Parameters<typeof translate>[1]) => translate(locale, key);
+  const studentWorkspaceNavItems: StudentWorkspaceNavItem[] = [
+    { href: "/student", label: t("student.dashboard") },
+    { href: "/student/work", label: t("student.myWork") },
+    { href: "/student/classrooms", label: t("student.myClasses") },
+    { href: "/practice", label: t("student.practice") },
+    { href: "/mistakes", label: t("student.mistakes") },
+    { href: "/student/public-library", label: t("student.publicLibrary") },
+    { href: "/student/progress", label: t("student.progressFeedback") },
+  ];
 
-export function StudentWorkspaceNav() {
   return (
     <nav
-      aria-label="Student workspace"
+      aria-label={t("student.workspace")}
       className="flex flex-wrap gap-1 rounded-[14px] border border-[#D2D2D7] bg-white p-2 shadow-none"
     >
       {studentWorkspaceNavItems.map((item) => (

@@ -8,6 +8,9 @@ import {
 import { Button } from "@/components/ui/button";
 import { requireTeacher } from "@/lib/auth/guards";
 import { createClient } from "@/lib/supabase/server";
+import { formatDate as formatLocaleDate, formatDateTime as formatLocaleDateTime, formatNumber } from "@/lib/i18n/locale";
+import { getRequestLocale } from "@/lib/i18n/server";
+import { translate } from "@/lib/i18n/messages";
 import {
   getAssignmentDeliveryQuarantine,
   getManagedClassroom,
@@ -32,28 +35,6 @@ type AssignmentGroup = {
   title: string;
 };
 
-function formatDate(value: string | null | undefined) {
-  if (!value) return "No due date";
-  return new Intl.DateTimeFormat("en", {
-    dateStyle: "medium",
-  }).format(new Date(value));
-}
-
-function formatDateTime(value: string | null | undefined) {
-  if (!value) return "No activity yet";
-  return new Intl.DateTimeFormat("en", {
-    dateStyle: "medium",
-    timeStyle: "short",
-  }).format(new Date(value));
-}
-
-function statusLabel(status: string) {
-  if (status === "assigned") return "Assigned";
-  if (status === "draft") return "Draft";
-  if (status === "archived") return "Archived";
-  return status.replace(/_/g, " ");
-}
-
 function statusClasses(status: string) {
   if (status === "assigned") {
     return "border-blue-200 bg-blue-50 text-blue-700";
@@ -67,9 +48,13 @@ function statusClasses(status: string) {
 function AssignmentCard({
   assignment,
   classroomId,
+  locale,
+  t,
 }: {
   assignment: TeacherAssignmentSummary;
   classroomId: string;
+  locale: Parameters<typeof translate>[0];
+  t: (key: Parameters<typeof translate>[1], values?: Parameters<typeof translate>[2]) => string;
 }) {
   const progressSummary = assignment.progressSummary;
   const isDeliveryPaused = Boolean(
@@ -93,7 +78,7 @@ function AssignmentCard({
                 displayStatus,
               )}`}
             >
-              {isDeliveryPaused ? "Delivery paused" : statusLabel(assignment.status)}
+              {isDeliveryPaused ? t("assignments.deliveryPaused") : ({ assigned: t("assignments.assigned"), draft: t("assignments.draft"), archived: t("assignments.archived") } as Record<string, string>)[assignment.status] ?? assignment.status}
             </span>
           </div>
           {assignment.instructions ? (
@@ -102,40 +87,40 @@ function AssignmentCard({
             </p>
           ) : (
             <p className="text-sm leading-6 text-slate-500">
-              No student instructions yet.
+              {t("assignments.noInstructions")}
             </p>
           )}
           <dl className="grid gap-2 text-sm sm:grid-cols-4">
             <div className="rounded-md bg-slate-50 px-3 py-2">
               <dt className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-500">
-                Due
+                {t("assignments.due")}
               </dt>
               <dd className="mt-1 font-semibold text-slate-900">
-                {formatDate(assignment.due_at)}
+                {assignment.due_at ? formatLocaleDate(locale, assignment.due_at, { dateStyle: "medium" }) : t("assignments.noDueDate")}
               </dd>
             </div>
             <div className="rounded-md bg-slate-50 px-3 py-2">
               <dt className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-500">
-                Items
+                {t("assignments.items")}
               </dt>
               <dd className="mt-1 font-semibold text-slate-900">
-                {assignment.itemCount}
+                {formatNumber(locale, assignment.itemCount)}
               </dd>
             </div>
             <div className="rounded-md bg-slate-50 px-3 py-2">
               <dt className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-500">
-                Completed
+                {t("assignments.completed")}
               </dt>
               <dd className="mt-1 font-semibold text-slate-900">
-                {progressSummary.completedCount}/{progressSummary.studentCount}
+                {formatNumber(locale, progressSummary.completedCount)}/{formatNumber(locale, progressSummary.studentCount)}
               </dd>
             </div>
             <div className="rounded-md bg-slate-50 px-3 py-2">
               <dt className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-500">
-                Latest activity
+                {t("assignments.latestActivity")}
               </dt>
               <dd className="mt-1 font-semibold text-slate-900">
-                {formatDateTime(progressSummary.latestPracticeSessionAt)}
+                {progressSummary.latestPracticeSessionAt ? formatLocaleDateTime(locale, progressSummary.latestPracticeSessionAt) : t("assignments.noActivity")}
               </dd>
             </div>
           </dl>
@@ -143,24 +128,24 @@ function AssignmentCard({
         <div className="grid min-w-full grid-cols-3 gap-2 text-center xl:min-w-56">
           <div className="rounded-lg border border-slate-200 bg-white px-3 py-2">
             <span className="block text-base font-bold text-slate-950">
-              {progressSummary.notStartedCount}
+              {formatNumber(locale, progressSummary.notStartedCount)}
             </span>
-            <span className="text-xs text-slate-500">Not started</span>
+            <span className="text-xs text-slate-500">{t("assignments.notStarted")}</span>
           </div>
           <div className="rounded-lg border border-slate-200 bg-white px-3 py-2">
             <span className="block text-base font-bold text-slate-950">
-              {progressSummary.inProgressCount}
+              {formatNumber(locale, progressSummary.inProgressCount)}
             </span>
-            <span className="text-xs text-slate-500">Active</span>
+            <span className="text-xs text-slate-500">{t("assignments.active")}</span>
           </div>
           <div className="rounded-lg border border-slate-200 bg-white px-3 py-2">
             <span className="block text-base font-bold text-slate-950">
-              {progressSummary.completedCount}
+              {formatNumber(locale, progressSummary.completedCount)}
             </span>
-            <span className="text-xs text-slate-500">Done</span>
+            <span className="text-xs text-slate-500">{t("assignments.done")}</span>
           </div>
           <span className="col-span-3 text-sm font-semibold text-blue-700">
-            Open progress
+            {t("assignments.openProgress")}
           </span>
         </div>
       </div>
@@ -171,9 +156,13 @@ function AssignmentCard({
 function AssignmentSection({
   classroomId,
   group,
+  locale,
+  t,
 }: {
   classroomId: string;
   group: AssignmentGroup;
+  locale: Parameters<typeof translate>[0];
+  t: (key: Parameters<typeof translate>[1], values?: Parameters<typeof translate>[2]) => string;
 }) {
   return (
     <section className="teacher-panel overflow-hidden">
@@ -194,6 +183,8 @@ function AssignmentSection({
             <AssignmentCard
               assignment={assignment}
               classroomId={classroomId}
+              locale={locale}
+              t={t}
               key={assignment.id}
             />
           ))}
@@ -210,6 +201,8 @@ export default async function TeacherAssignmentsPage({
   searchParams,
 }: TeacherAssignmentsPageProps) {
   await requireTeacher();
+  const locale = await getRequestLocale();
+  const t = (key: Parameters<typeof translate>[1], values?: Parameters<typeof translate>[2]) => translate(locale, key, values);
   const { id } = await params;
   const query = await searchParams;
   const supabase = await createClient();
@@ -239,28 +232,22 @@ export default async function TeacherAssignmentsPage({
   const archived = assignments.filter((assignment) => assignment.status === "archived");
   const groups: AssignmentGroup[] = [
     {
-      title: "Delivery paused",
+      title: t("assignments.deliveryPaused"),
       description:
-        "Review-gated work withdrawn from students without deleting progress. Open an item for recovery steps.",
-      empty: "No Assignment delivery is paused.",
+        t("assignments.pausedDescription"),
+      empty: t("assignments.noPaused"),
       items: paused,
     },
     {
-      title: "Assigned",
-      description: "Visible in Student My Work for active class members.",
-      empty: "No assigned work is live for students yet.",
+      title: t("assignments.assigned"), description: t("assignments.assignedDescription"), empty: t("assignments.noAssigned"),
       items: assigned,
     },
     {
-      title: "Draft",
-      description: "Teacher-only assignments that are not visible to students.",
-      empty: "No teacher-side drafts.",
+      title: t("assignments.draft"), description: t("assignments.draftDescription"), empty: t("assignments.noDrafts"),
       items: draft,
     },
     {
-      title: "Archived",
-      description: "Older assignments kept for reference.",
-      empty: "No archived assignments.",
+      title: t("assignments.archived"), description: t("assignments.archivedDescription"), empty: t("assignments.noArchived"),
       items: archived,
     },
   ];
@@ -276,39 +263,40 @@ export default async function TeacherAssignmentsPage({
       <section className="teacher-hero">
         <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
           <div className="space-y-2">
-            <p className="teacher-eyebrow">Teacher assignments</p>
+            <p className="teacher-eyebrow">{t("assignments.teacherAssignments")}</p>
             <h1 className="text-3xl font-bold tracking-tight text-slate-950">
               {classroom.name}
             </h1>
             <p className="max-w-2xl text-base leading-7 text-slate-600">
-              Assignments are class delivery history. Publish new bank work from
-              the top-level Publish module, or use the compatibility shortcut
-              when needed.
+              {t("assignments.deliveryHistoryDescription")}
             </p>
           </div>
           <div className="flex flex-wrap gap-2">
             <Button asChild variant="outline">
-              <Link href="/teacher">Teacher Studio</Link>
+              <Link href="/teacher">{t("assignments.teacherStudio")}</Link>
             </Button>
             {classroom.status === "active" ? (
               <>
-                <ClassroomPublishCta classroomId={classroom.id} />
+                <ClassroomPublishCta
+                  classroomId={classroom.id}
+                  label={t("assignments.publishToClasses")}
+                />
                 <Button asChild>
                   <Link href={`/teacher/publish?classroomId=${classroom.id}`}>
-                    Publish new work
+                    {t("assignments.publishNewWork")}
                   </Link>
                 </Button>
               </>
             ) : (
               <Button asChild variant="outline">
                 <Link href={`/teacher/classrooms/${classroom.id}/settings`}>
-                  Reopen before publishing
+                  {t("assignments.reopenBeforePublishing")}
                 </Link>
               </Button>
             )}
             <Button asChild variant="outline">
               <Link href={`/teacher/classrooms/${classroom.id}`}>
-                Back to roster
+                {t("assignments.backToRoster")}
               </Link>
             </Button>
           </div>
@@ -317,26 +305,23 @@ export default async function TeacherAssignmentsPage({
 
       <ClassroomRouteTabs classroomId={classroom.id} />
       <section className="rounded-lg border border-sky-200 bg-sky-50 p-4 text-sm leading-6 text-sky-900">
-        <strong className="font-bold">Assignment visibility:</strong> these
-        assignments expose selected question items to students. Assignment
-        visibility is not global publishing. Use Publish for the primary
-        distribute-work path.
+        <strong className="font-bold">{t("assignments.assignmentVisibility")}:</strong>{" "}
+        {t("assignments.assignmentVisibilityDescription")}
       </section>
       {classroom.status === "archived" ? (
         <section className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm leading-6 text-amber-950">
-          This classroom is archived. Historical assignments remain readable,
-          but new publishing targets are blocked until the classroom is reopened.
+          {t("assignments.archivedClassroomNotice")}
         </section>
       ) : null}
 
       {query.saved ? (
         <p className="rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-medium text-emerald-800">
-          {query.saved}
+          {t("assignments.actionSaved")}
         </p>
       ) : null}
       {query.error ? (
         <p className="rounded-lg border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm font-medium text-destructive">
-          {query.error}
+          {t("assignments.actionFailed")}
         </p>
       ) : null}
 
@@ -344,11 +329,7 @@ export default async function TeacherAssignmentsPage({
         <>
           <section className="grid gap-3 md:grid-cols-4">
             {[
-              ["Assigned", assigned.length],
-              ["Paused", paused.length],
-              ["Draft", draft.length],
-              ["Archived", archived.length],
-              ["Latest activity", formatDateTime(latestActivity)],
+              [t("assignments.assigned"), assigned.length], [t("assignments.paused"), paused.length], [t("assignments.draft"), draft.length], [t("assignments.archived"), archived.length], [t("assignments.latestActivity"), latestActivity ? formatLocaleDateTime(locale, latestActivity) : t("assignments.noActivity")],
             ].map(([label, value]) => (
               <div
                 className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm"
@@ -356,7 +337,7 @@ export default async function TeacherAssignmentsPage({
               >
                 <p className="text-sm font-medium text-slate-500">{label}</p>
                 <p className="mt-2 break-words text-2xl font-bold text-slate-950">
-                  {value}
+                  {typeof value === "number" ? formatNumber(locale, value) : value}
                 </p>
               </div>
             ))}
@@ -365,16 +346,14 @@ export default async function TeacherAssignmentsPage({
           <section className="teacher-panel overflow-hidden">
             <div className="border-b border-slate-100 p-5">
               <h2 className="text-lg font-bold text-slate-950">
-                Classroom assignments
+                {t("assignments.classroomAssignments")}
               </h2>
               <p className="teacher-muted">
-                Drafts stay teacher-side. Assigned work is visible only to
-                active students in this class.
+                {t("assignments.classroomAssignmentsDescription")}
               </p>
             </div>
             <div className="p-5 text-sm leading-6 text-slate-600">
-              Use the status sections below to review live work, teacher drafts,
-              and archived assignments.
+              {t("assignments.statusSectionsDescription")}
             </div>
           </section>
 
@@ -382,6 +361,8 @@ export default async function TeacherAssignmentsPage({
             <AssignmentSection
               classroomId={classroom.id}
               group={group}
+              locale={locale}
+              t={t}
               key={group.title}
             />
           ))}
@@ -391,23 +372,22 @@ export default async function TeacherAssignmentsPage({
           <div className="max-w-md space-y-4">
             <div>
               <h2 className="text-lg font-bold text-slate-950">
-                No assignments yet
+                {t("assignments.noAssignments")}
               </h2>
               <p className="mt-2 text-sm leading-6 text-slate-600">
-                Create the first assignment from published questions, then
-                students in this class will see assigned work in My Work.
+                {t("assignments.noAssignmentsDescription")}
               </p>
             </div>
             {classroom.status === "active" ? (
               <Button asChild>
                 <Link href={`/teacher/publish?classroomId=${classroom.id}`}>
-                  Publish new work
+                  {t("assignments.publishNewWork")}
                 </Link>
               </Button>
             ) : (
               <Button asChild variant="outline">
                 <Link href={`/teacher/classrooms/${classroom.id}/settings`}>
-                  Reopen before publishing
+                  {t("assignments.reopenBeforePublishing")}
                 </Link>
               </Button>
             )}

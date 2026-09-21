@@ -10,6 +10,10 @@ function assert(condition, message) {
   if (!condition) throw new Error(message);
 }
 
+function usesMessageKeys(source, ...keys) {
+  return keys.every((key) => source.includes(`"${key}"`));
+}
+
 async function read(relativePath) {
   return readFile(resolve(root, relativePath), "utf8");
 }
@@ -85,7 +89,13 @@ const [
 ]);
 
 assert(
-  publishPage.includes("Choose one source Library") &&
+  usesMessageKeys(
+    publishPage,
+    "assignment.chooseSourceLibrary",
+    "assignment.createTitle",
+    "assignment.chooseSourceTitle",
+    "assignment.details",
+  ) &&
     publishPage.includes("AssignmentComposerFlow") &&
     publishPage.includes("QuestionChecklist") &&
     publishPage.includes("LazyTeacherQuestionPreview") &&
@@ -102,9 +112,12 @@ assert(
     composer.includes("AssignmentDetailsFields") &&
     composer.includes("aria-invalid={titleError ? true : undefined}") &&
     composer.includes('aria-current={isCurrent ? "step"') &&
-    composer.includes("Continue to classroom") &&
-    composer.includes("Continue to review") &&
-    composer.includes("Publish Assignment") &&
+    usesMessageKeys(
+      composer,
+      "assignment.continueToClassroom",
+      "assignment.continueToReview",
+      "assignment.publish",
+    ) &&
     composer.includes("useFormStatus") &&
     composer.includes("aria-busy={pending}") &&
     composer.includes("disabled={!canSubmit || pending}") &&
@@ -138,8 +151,8 @@ assert(
 
 assert(
   assignmentPage.includes('name="feedbackId"') &&
-    assignmentPage.includes('pendingLabel="Saving private note') &&
-    assignmentPage.includes('pendingLabel="Sending feedback') &&
+  assignmentPage.includes('assignmentDetail.savingPrivateNote') &&
+    assignmentPage.includes('assignmentDetail.sendingFeedback') &&
     feedbackAction.includes("feedbackId: z.string().uuid()") &&
     feedbackAction.includes("id: parsed.feedbackId") &&
     feedbackAction.includes('error.code === "23505"') &&
@@ -155,12 +168,12 @@ assert(
 assert(
   assignmentPage.includes("FocusTaskLink") &&
     assignmentPage.includes('taskKind="student-preview"') &&
-    assignmentPage.includes("Preview as student") &&
+    assignmentPage.includes("assignmentDetail.previewAsStudent") &&
     assignmentPage.includes("newTabLabel=") &&
     !assignmentPage.includes('href={`/student/work/${assignment.id}`}') &&
-    assignmentPage.includes("Question performance") &&
-    assignmentPage.includes("Attempt drilldown") &&
-    assignmentPage.includes("Assignment setup and source") &&
+    assignmentPage.includes("assignmentDetail.questionPerformance") &&
+    assignmentPage.includes("assignmentDetail.attemptDrilldown") &&
+    assignmentPage.includes("assignmentDetail.assignmentSetupAndSource") &&
     assignmentPage.includes("EvidenceDisclosureLink") &&
     assignmentPage.includes("divide-y divide-slate-100 lg:hidden") &&
     evidenceDisclosureLink.includes("HTMLDetailsElement") &&
@@ -173,7 +186,7 @@ assert(
   previewPage.includes("requireTeacher") &&
     previewPage.includes("getTeacherAssignmentStudentPreview") &&
     previewPage.includes("sanitizeTeacherAssignmentReturnTo") &&
-    previewPage.includes("returnSurfaceLabel=\"Assignment detail\"") &&
+    previewPage.includes("assignmentDetail.assignmentDetailReturn") &&
     previewPage.includes("QuestionText") &&
     !previewPage.includes("answer_spec") &&
     !previewPage.includes("solution_html") &&
@@ -197,8 +210,11 @@ assert(
 );
 
 assert(
-  progressPage.includes("Needs attention") &&
-    progressPage.includes("All Assignment progress") &&
+  usesMessageKeys(
+    progressPage,
+    "teacher.progressNeedsAttention",
+    "teacher.progressAllAssignmentProgress",
+  ) &&
     progressPage.includes("<details") &&
     !progressPage.includes("Assignment and classroom evidence only.") &&
     !progressPage.includes("Evidence boundary"),

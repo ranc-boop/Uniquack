@@ -32,9 +32,8 @@ assert(
   page.includes("Library") &&
     page.includes("Blueprint") &&
     page.includes("AssignmentComposerFlow") &&
-    page.includes("Choose one classroom") &&
-    page.includes("Final review") &&
-    page.includes("What students can and cannot see") &&
+    page.includes('translate(locale, "assignment.classroom")') &&
+    page.includes('translate(locale, "assignment.details")') &&
     page.includes("clientRequestKey") &&
     !page.includes("Selected students later") &&
     !page.includes("Safety gates") &&
@@ -45,8 +44,8 @@ assert(
 assert(
   page.includes("PublishSelectionControls") &&
     selectionControls.includes('"use client"') &&
-    selectionControls.includes("Select visible") &&
-    selectionControls.includes("Clear"),
+    selectionControls.includes('t("assignment.selectVisible")') &&
+    selectionControls.includes('t("assignment.clearSelection")'),
   "Publish Center v2 must provide checklist ergonomics without changing server-action forms",
 );
 
@@ -55,7 +54,7 @@ assert(
     helper.includes("filterPublishableQuestions") &&
     helper.includes("verifyPublishableSelection") &&
     helper.includes("buildPublishAssignmentSourceSummary") &&
-    helper.includes("question.status === \"draft\"") &&
+    helper.includes("question.approval_status !== \"approved\"") &&
     helper.includes("question.status === \"archived\"") &&
     helper.includes("question.status === \"deprecated\"") &&
     helper.includes("review_draft_items") &&
@@ -74,7 +73,7 @@ assert(
     actions.includes("create_assignment_from_bank") &&
     actions.includes("p_client_request_key") &&
     actions.includes("selectedClassroomIds.length !== 1") &&
-    actions.includes("Selected classrooms must belong to the source Library organization.") &&
+    actions.includes("classroom_organization_mismatch") &&
     !actions.includes("AI_PROVIDER") &&
     !actions.includes("providerProfiles") &&
     !actions.includes("published_at"),

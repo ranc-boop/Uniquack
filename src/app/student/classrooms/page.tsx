@@ -1,6 +1,9 @@
 import { StudentPendingLink } from "@/components/student/student-pending-link";
 import { Button } from "@/components/ui/button";
 import { requireStudentWorkspace } from "@/lib/auth/guards";
+import { formatDate, formatNumber } from "@/lib/i18n/locale";
+import { translate } from "@/lib/i18n/messages";
+import { getRequestLocale } from "@/lib/i18n/server";
 import { createClient } from "@/lib/supabase/server";
 
 export const dynamic = "force-dynamic";
@@ -12,18 +15,14 @@ type StudentClassroomsPageProps = {
   }>;
 };
 
-function formatDate(value: string | null | undefined) {
-  if (!value) return "Not set";
-  return new Intl.DateTimeFormat("en", {
-    dateStyle: "medium",
-  }).format(new Date(value));
-}
-
 export default async function StudentClassroomsPage({
   searchParams,
 }: StudentClassroomsPageProps) {
-  const profile = await requireStudentWorkspace();
-  const params = await searchParams;
+  const [profile, params, locale] = await Promise.all([
+    requireStudentWorkspace(),
+    searchParams,
+    getRequestLocale(),
+  ]);
   const supabase = await createClient();
   const { data: memberships, error: membershipError } = await supabase
     .from("classroom_members")
@@ -48,15 +47,15 @@ export default async function StudentClassroomsPage({
         <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
           <div className="space-y-2">
             <h1 className="text-3xl font-bold tracking-tight text-slate-950">
-              My classes
+              {translate(locale, "classrooms.title")}
             </h1>
           </div>
           <div className="flex flex-wrap gap-2">
             <Button asChild variant="outline">
-              <StudentPendingLink href="/student/work">My Work</StudentPendingLink>
+              <StudentPendingLink href="/student/work">{translate(locale, "student.myWork")}</StudentPendingLink>
             </Button>
             <Button asChild>
-              <StudentPendingLink href="/student/classrooms/join">Join a class</StudentPendingLink>
+              <StudentPendingLink href="/student/classrooms/join">{translate(locale, "work.joinClass")}</StudentPendingLink>
             </Button>
           </div>
         </div>
@@ -69,7 +68,7 @@ export default async function StudentClassroomsPage({
       ) : null}
       {params.error ? (
         <p className="rounded-lg border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm font-medium text-destructive">
-          {params.error}
+          {translate(locale, "common.requestFailed")}
         </p>
       ) : null}
 
@@ -78,17 +77,17 @@ export default async function StudentClassroomsPage({
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div>
               <h2 className="text-lg font-bold text-slate-950">
-                Joined classrooms
+                {translate(locale, "classrooms.joined")}
               </h2>
             </div>
             <span className="rounded-full bg-slate-100 px-3 py-1 text-sm font-semibold text-slate-700">
-              {memberships?.length ?? 0}
+              {formatNumber(locale, memberships?.length ?? 0)}
             </span>
           </div>
         </div>
         {membershipError || classroomError ? (
           <p className="p-5 text-sm text-destructive">
-            {membershipError?.message ?? classroomError?.message}
+            {translate(locale, "common.requestFailed")}
           </p>
         ) : memberships?.length ? (
           <div className="grid gap-4 p-5 md:grid-cols-2">
@@ -101,15 +100,14 @@ export default async function StudentClassroomsPage({
                 >
                   <div className="flex flex-wrap items-center gap-2">
                     <h3 className="min-w-0 break-words text-base font-bold text-slate-950">
-                      {classroom?.name ?? "Classroom"}
+                      {classroom?.name ?? translate(locale, "classrooms.unnamed")}
                     </h3>
                     <span className="rounded-full bg-emerald-50 px-2 py-1 text-xs font-semibold text-emerald-700">
-                      Active membership
+                      {translate(locale, "classrooms.activeMembership")}
                     </span>
                   </div>
                   <p className="mt-2 text-sm leading-6 text-slate-600">
-                    {classroom?.subject || "No subject set"} - Joined{" "}
-                    {formatDate(membership.joined_at)}
+                    {classroom?.subject || translate(locale, "classrooms.noSubject")} - {translate(locale, "classrooms.joinedDate", { date: membership.joined_at ? formatDate(locale, membership.joined_at) : translate(locale, "classrooms.notSet") })}
                   </p>
                   {classroom?.description ? (
                     <p className="mt-2 text-sm leading-6 text-slate-600">
@@ -125,22 +123,20 @@ export default async function StudentClassroomsPage({
             <div className="max-w-md space-y-4">
               <div>
                 <h3 className="text-base font-bold text-slate-950">
-                  No classes joined yet
+                  {translate(locale, "classrooms.emptyTitle")}
                 </h3>
                 <p className="mt-2 text-sm leading-6 text-slate-600">
-                  Ask your teacher for a join code, then use it to connect your
-                  account to the classroom. Your assignments appear in My Work
-                  after you join.
+                  {translate(locale, "classrooms.emptyDescription")}
                 </p>
               </div>
               <div className="flex flex-wrap justify-center gap-2">
                 <Button asChild>
                   <StudentPendingLink href="/student/classrooms/join">
-                    Enter join code
+                    {translate(locale, "classrooms.enterCode")}
                   </StudentPendingLink>
                 </Button>
                 <Button asChild variant="outline">
-                  <StudentPendingLink href="/student/work">Open My Work</StudentPendingLink>
+                  <StudentPendingLink href="/student/work">{translate(locale, "student.openMyWork")}</StudentPendingLink>
                 </Button>
               </div>
             </div>

@@ -30,6 +30,9 @@ import {
 import { createClient } from "@/lib/supabase/server";
 import { sanitizeTeacherBankReturnTo } from "@/lib/teacher-focus-workspace";
 import { cn } from "@/lib/utils";
+import { formatNumber } from "@/lib/i18n/locale";
+import { getRequestLocale } from "@/lib/i18n/server";
+import { translate } from "@/lib/i18n/messages";
 import type { BankQuestion } from "@/types/database";
 
 import {
@@ -49,19 +52,20 @@ import {
 
 export const dynamic = "force-dynamic";
 
-function SetupNeededState() {
+function SetupNeededState({ locale }: { locale: Parameters<typeof translate>[0] }) {
+  const t = (key: "teacherLibrary.setupNeeded" | "teacherLibrary.libraryQuestionsUnavailable" | "teacherLibrary.applyMigrations" | "teacherLibrary.backToLibraries") => translate(locale, key);
   return (
     <BankWorkbenchPage>
       <section className="rounded-lg border border-slate-200/80 bg-white/90 p-6 shadow-sm">
-        <p className="student-eyebrow">Setup needed</p>
+        <p className="student-eyebrow">{t("teacherLibrary.setupNeeded")}</p>
         <h1 className="mt-2 text-2xl font-bold text-slate-950">
-          Library questions are not available yet.
+          {t("teacherLibrary.libraryQuestionsUnavailable")}
         </h1>
         <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-600">
-          Apply clean migrations 0025 and 0027 before using Library questions.
+          {t("teacherLibrary.applyMigrations")}
         </p>
         <Button asChild className="mt-5" variant="outline">
-          <Link href="/teacher/banks">Back to Libraries</Link>
+          <Link href="/teacher/banks">{t("teacherLibrary.backToLibraries")}</Link>
         </Button>
       </section>
     </BankWorkbenchPage>
@@ -89,6 +93,8 @@ export default async function TeacherBankQuestionsPage({
     view?: string;
   }>;
 }) {
+  const locale = await getRequestLocale();
+  const t = (key: Parameters<typeof translate>[1], values?: Parameters<typeof translate>[2]) => translate(locale, key, values);
   const [profile, { bankId }, query, supabase] = await Promise.all([
     requireTeacher(),
     params,
@@ -140,7 +146,7 @@ export default async function TeacherBankQuestionsPage({
     ]);
   } catch (error) {
     if (error instanceof QuestionBankSchemaMissingError) {
-      return <SetupNeededState />;
+      return <SetupNeededState locale={locale} />;
     }
 
     throw error;
@@ -271,13 +277,13 @@ export default async function TeacherBankQuestionsPage({
       disabledReason: eligible
         ? undefined
         : superseded
-          ? "This archived question was replaced by an approved revision and cannot be restored."
+          ? t("teacherLibrary.archivedQuestionReplaced")
           : question
-          ? "Viewer access cannot change Library questions."
-          : "This Library question is unavailable.",
+            ? t("teacherLibrary.viewerCannotChange")
+            : t("teacherLibrary.libraryQuestionUnavailable"),
       eligible,
       id: row.bank_question_id,
-      label: `${question?.question_code ?? "Code unavailable"} · ${question?.title ?? "Question unavailable"}`,
+      label: `${question?.question_code ?? t("teacherLibrary.codeUnavailable")} · ${question?.title ?? t("teacherLibrary.questionUnavailable")}`,
     };
   });
   const questionBulkScopeKey = [
@@ -320,7 +326,10 @@ export default async function TeacherBankQuestionsPage({
         actionHref: question.source_review_item_id
           ? `/teacher/banks/${bank.id}/review/${question.source_review_item_id}`
           : `/teacher/banks/${bank.id}/questions/${row.bank_question_id}/preview`,
-        actionLabel: itemStatus === "pending" ? "Edit and approve" : "View and manage",
+        actionLabel:
+          itemStatus === "pending"
+            ? t("teacherLibrary.editAndApprove")
+            : t("teacherLibrary.viewAndManage"),
         approvalStatus: itemStatus,
         contentHtml: detail?.content_html ?? "",
         gradingCapability: deterministic
@@ -345,7 +354,7 @@ export default async function TeacherBankQuestionsPage({
         <header className="teacher-page-header">
           <div>
             <h1 className="text-3xl font-semibold tracking-[-0.03em] text-[#1D1D1F]">
-              Questions
+              {t("teacherLibrary.questions")}
             </h1>
             <p className="mt-1 text-sm font-medium text-[#6E6E73]">{bank.name}</p>
           </div>
@@ -356,7 +365,7 @@ export default async function TeacherBankQuestionsPage({
         />
         {query.saved ? (
           <p className="rounded-[14px] border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-900" role="status">
-            {query.saved}
+            {t("common.saved")}
           </p>
         ) : null}
         <QuestionManagementWorkbench
@@ -383,14 +392,14 @@ export default async function TeacherBankQuestionsPage({
       <header className="teacher-page-header">
         <div>
           <h1 className="text-3xl font-semibold tracking-[-0.03em] text-[#1D1D1F]">
-            Questions
+            {t("teacherLibrary.questions")}
           </h1>
           <p className="mt-1 text-sm font-medium text-[#6E6E73]">
             {bank.name}
           </p>
         </div>
         <Button asChild variant="outline">
-          <Link href={`/teacher/banks/${bank.id}`}>Back</Link>
+          <Link href={`/teacher/banks/${bank.id}`}>{t("teacherLibrary.back")}</Link>
         </Button>
       </header>
 
@@ -404,7 +413,7 @@ export default async function TeacherBankQuestionsPage({
           className="rounded-md border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-medium text-emerald-900"
           role="status"
         >
-          {query.saved}
+          {t("common.saved")}
         </p>
       ) : null}
       {query.error ? (
@@ -412,15 +421,13 @@ export default async function TeacherBankQuestionsPage({
           className="rounded-md border border-rose-200 bg-rose-50 px-4 py-3 text-sm font-medium text-rose-900"
           role="alert"
         >
-          {query.error}
+          {t("common.requestFailed")}
         </p>
       ) : null}
 
       {!governanceAvailable ? (
         <section className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-950">
-          Revision, public submission, and Public Library copy features need
-          clean migration 0055. Existing Library questions and Assignments are
-          unchanged.
+          {t("teacherLibrary.governanceMigrationNotice")}
         </section>
       ) : null}
 
@@ -430,30 +437,30 @@ export default async function TeacherBankQuestionsPage({
             action={
               <Button asChild variant="outline">
                 <Link href={`/teacher/banks/${bank.id}/questions`}>
-                  Close public catalog
+                  {t("teacherLibrary.closePublicCatalog")}
                 </Link>
               </Button>
             }
-            eyebrow="Central Public Library"
-            title="Add approved public questions"
+            eyebrow={t("teacherLibrary.centralPublicLibrary")}
+            title={t("teacherLibrary.addApprovedPublicQuestions")}
           />
           {canManage ? (
             <form className="grid gap-3 border-y border-sky-100 p-4 sm:grid-cols-[minmax(12rem,1fr)_auto]">
               <div className="space-y-2">
-                <Label htmlFor="public-library-search">Search public questions</Label>
+                <Label htmlFor="public-library-search">{t("teacherLibrary.searchPublicQuestions")}</Label>
                 <Input
                   defaultValue={query.publicQ ?? ""}
                   id="public-library-search"
                   name="publicQ"
-                  placeholder="Question code or title"
+                  placeholder={t("teacherLibrary.questionCodeOrTitle")}
                 />
                 <input name="public" type="hidden" value="1" />
               </div>
               <div className="flex items-end gap-2">
-                <Button type="submit">Search</Button>
+                <Button type="submit">{t("teacherLibrary.search")}</Button>
                 <Button asChild type="button" variant="outline">
                   <Link href={`/teacher/banks/${bank.id}/questions?public=1`}>
-                    Reset
+                    {t("teacherLibrary.reset")}
                   </Link>
                 </Button>
               </div>
@@ -461,8 +468,7 @@ export default async function TeacherBankQuestionsPage({
           ) : null}
           {!canManage ? (
             <p className="p-6 text-sm text-muted-foreground">
-              Viewer access is read-only. Only Library owners and editors can
-              add public questions.
+              {t("teacherLibrary.viewerPublicReadOnly")}
             </p>
           ) : publicQuestions.length ? (
             <>
@@ -486,10 +492,10 @@ export default async function TeacherBankQuestionsPage({
                           value={question.id}
                         />
                         <FormSubmitButton
-                          pendingLabel="Adding…"
+                          pendingLabel={t("teacherLibrary.adding")}
                           size="sm"
                         >
-                          Add
+                          {t("teacherLibrary.add")}
                         </FormSubmitButton>
                       </form>
                     </div>
@@ -506,8 +512,11 @@ export default async function TeacherBankQuestionsPage({
               </div>
               <div className="flex items-center justify-between border-t border-sky-100 p-4 text-sm">
                 <span>
-                  {publicTotal} result{publicTotal === 1 ? "" : "s"} · Page{" "}
-                  {publicPage} of {publicTotalPages}
+                  {t("teacherLibrary.resultsPage", {
+                    page: formatNumber(locale, publicPage),
+                    total: formatNumber(locale, publicTotal),
+                    totalPages: formatNumber(locale, publicTotalPages),
+                  })}
                 </span>
                 <div className="flex gap-2">
                   <Button
@@ -517,7 +526,7 @@ export default async function TeacherBankQuestionsPage({
                     variant="outline"
                   >
                     <Link href={publicPageHref(Math.max(1, publicPage - 1))}>
-                      Previous
+                      {t("teacherLibrary.previous")}
                     </Link>
                   </Button>
                   <Button
@@ -531,7 +540,7 @@ export default async function TeacherBankQuestionsPage({
                         Math.min(publicTotalPages, publicPage + 1),
                       )}
                     >
-                      Next
+                      {t("teacherLibrary.next")}
                     </Link>
                   </Button>
                 </div>
@@ -539,7 +548,7 @@ export default async function TeacherBankQuestionsPage({
             </>
           ) : (
             <p className="p-6 text-sm text-muted-foreground">
-              No approved public questions are available.
+              {t("teacherLibrary.noApprovedPublicQuestions")}
             </p>
           )}
         </section>
@@ -565,7 +574,7 @@ export default async function TeacherBankQuestionsPage({
                   {canManage && governanceAvailable ? (
                     <Button asChild variant="outline">
                       <Link href={`/teacher/banks/${bank.id}/questions?public=1`}>
-                        Add from Public Library
+                        {t("teacherLibrary.addFromPublicLibrary")}
                       </Link>
                     </Button>
                   ) : null}
@@ -574,7 +583,7 @@ export default async function TeacherBankQuestionsPage({
                       href={`/teacher/banks/${bank.id}/imports`}
                       icon={Upload}
                     >
-                      Import material
+                      {t("teacherLibrary.importMaterial")}
                     </BankQuickAction>
                   ) : null}
                 </div>
@@ -582,18 +591,18 @@ export default async function TeacherBankQuestionsPage({
               focusId="library-question-results-focus"
               title={
                 readiness === "active"
-                  ? "Ready"
-                  : "Archived"
+                  ? t("teacherLibrary.ready")
+                  : t("teacherLibrary.archived")
               }
           />
         <form className="flex flex-col gap-3 border-b border-slate-200 p-4 sm:flex-row sm:items-end">
           <div className="min-w-0 flex-1 space-y-2">
-            <Label htmlFor="library-question-search">Search</Label>
+                    <Label htmlFor="library-question-search">{t("teacherLibrary.search")}</Label>
             <Input
               defaultValue={query.q ?? ""}
               id="library-question-search"
               name="q"
-              placeholder="Question code or title"
+                  placeholder={t("teacherLibrary.questionCodeOrTitle")}
             />
           </div>
           <details className="group relative">
@@ -603,52 +612,52 @@ export default async function TeacherBankQuestionsPage({
                 "min-h-10 cursor-pointer list-none",
               )}
             >
-              Filters
+              {t("teacherLibrary.filters")}
             </summary>
             <div className="mt-2 w-full space-y-4 rounded-md border border-slate-200 bg-white p-4 shadow-lg sm:absolute sm:right-0 sm:z-20 sm:w-80">
               <div className="space-y-2">
-                <Label htmlFor="library-question-readiness">State</Label>
+                <Label htmlFor="library-question-readiness">{t("teacherLibrary.state")}</Label>
                 <select
                   className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
                   defaultValue={readiness}
                   id="library-question-readiness"
                   name="readiness"
                 >
-                  <option value="active">Ready</option>
-                  <option value="archived">Archived</option>
+                  <option value="active">{t("teacherLibrary.ready")}</option>
+                  <option value="archived">{t("teacherLibrary.archived")}</option>
                 </select>
               </div>
               <div className="space-y-2">
-                <Label htmlFor="library-question-source">Source</Label>
+                <Label htmlFor="library-question-source">{t("teacherLibrary.source")}</Label>
                 <select
                   className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
                   defaultValue={sourceKind ?? ""}
                   id="library-question-source"
                   name="source"
                 >
-                  <option value="">All sources</option>
-                  <option value="manual">Manual</option>
-                  <option value="review_draft">Reviewed Draft</option>
-                  <option value="import">Import</option>
-                  <option value="public_pull">Public Library</option>
-                  <option value="course_builder">Course Builder</option>
+                  <option value="">{t("teacherLibrary.allSources")}</option>
+                  <option value="manual">{t("teacherLibrary.manual")}</option>
+                  <option value="review_draft">{t("teacherLibrary.reviewedDraft")}</option>
+                  <option value="import">{t("teacherLibrary.import")}</option>
+                  <option value="public_pull">{t("teacherLibrary.publicLibrary")}</option>
+                  <option value="course_builder">{t("teacherLibrary.courseBuilder")}</option>
                 </select>
               </div>
               <div className="space-y-2">
-                <Label htmlFor="library-question-taxonomy">Taxonomy tag</Label>
+                <Label htmlFor="library-question-taxonomy">{t("teacherLibrary.taxonomyTag")}</Label>
                 <Input
                   defaultValue={query.taxonomy ?? ""}
                   id="library-question-taxonomy"
                   name="taxonomy"
-                  placeholder="Exact tag ID"
+                  placeholder={t("teacherLibrary.exactTagId")}
                 />
               </div>
               <Button asChild type="button" variant="outline">
-                <Link href={`/teacher/banks/${bank.id}/questions`}>Reset</Link>
+                <Link href={`/teacher/banks/${bank.id}/questions`}>{t("teacherLibrary.reset")}</Link>
               </Button>
             </div>
           </details>
-          <Button type="submit">Search</Button>
+          <Button type="submit">{t("teacherLibrary.search")}</Button>
         </form>
         <div>
           {questionPage?.total ? (
@@ -656,9 +665,14 @@ export default async function TeacherBankQuestionsPage({
               {canManage ? (
                 <div className="flex min-h-12 items-center gap-3 border-b border-slate-200 px-4 text-sm font-semibold text-slate-700">
                   <BulkSelectAllCheckbox
-                    label={`Select all ${questionBulkItems.filter((item) => item.eligible).length} eligible questions on this page`}
+                    label={t("teacherLibrary.selectAllEligible", {
+                      count: formatNumber(
+                        locale,
+                        questionBulkItems.filter((item) => item.eligible).length,
+                      ),
+                    })}
                   />
-                  Select page
+                  {t("teacherLibrary.selectPage")}
                 </div>
               ) : null}
               <div className="divide-y divide-slate-200">
@@ -683,22 +697,24 @@ export default async function TeacherBankQuestionsPage({
                         ) : null}
                         <div className="min-w-0 flex-1">
                           <h2 className="truncate text-base font-semibold text-slate-950">
-                            {question?.title ?? "Question unavailable"}
+                            {question?.title ?? t("teacherLibrary.questionUnavailable")}
                           </h2>
                           <p className="mt-1 text-sm text-slate-600">
-                            {question?.question_code ?? "Code unavailable"} ·{" "}
-                            {question?.question_type ?? "Type unavailable"}
+                            {question?.question_code ?? t("teacherLibrary.codeUnavailable")} ·{" "}
+                            {question?.question_type ?? t("teacherLibrary.typeUnavailable")}
                           </p>
                           {isSuperseded ? (
                             <p className="mt-2 text-sm font-medium text-amber-800">
-                              Replaced by a newer version
+                              {t("teacherLibrary.replacedNewer")}
                             </p>
                           ) : null}
                         </div>
                         <BankBadge
                           tone={row.status === "active" ? "indigo" : "amber"}
                         >
-                          {row.status === "active" ? "Ready" : "Archived"}
+                          {row.status === "active"
+                            ? t("teacherLibrary.ready")
+                            : t("teacherLibrary.archived")}
                         </BankBadge>
                         {canManage &&
                         governanceAvailable &&
@@ -716,17 +732,17 @@ export default async function TeacherBankQuestionsPage({
                               value={question.id}
                             />
                             <FormSubmitButton
-                              pendingLabel="Opening…"
+                              pendingLabel={t("teacherLibrary.opening")}
                               size="sm"
                               variant="outline"
                             >
-                              Edit
+                              {t("teacherLibrary.edit")}
                             </FormSubmitButton>
                           </form>
                         ) : null}
                         <details className="group relative">
                           <summary className="inline-flex min-h-10 cursor-pointer list-none items-center rounded-md px-3 text-sm font-medium text-slate-700 hover:bg-slate-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-600">
-                            More
+                            {t("teacher.more")}
                           </summary>
                           <div className="mt-1 w-52 rounded-md border border-slate-200 bg-white p-2 shadow-lg lg:absolute lg:right-0 lg:z-20">
                             <a
@@ -736,7 +752,7 @@ export default async function TeacherBankQuestionsPage({
                               rel="noopener noreferrer"
                               target="_blank"
                             >
-                              Open in new tab
+                              {t("teacherLibrary.openInNewTab")}
                             </a>
                             {!isSuperseded ? (
                               <form action={deleteBankQuestion}>
@@ -752,7 +768,7 @@ export default async function TeacherBankQuestionsPage({
                                 />
                                 <DeleteLibraryQuestionButton
                                   questionTitle={
-                                    question?.title ?? "this question"
+                                    question?.title ?? t("teacherLibrary.thisQuestion")
                                   }
                                 />
                               </form>
@@ -774,13 +790,15 @@ export default async function TeacherBankQuestionsPage({
               </div>
               <div className="flex items-center justify-between border-t border-slate-200 p-4 text-sm">
                 <span>
-                  {questionPage.total} result
-                  {questionPage.total === 1 ? "" : "s"} · Page {page} of{" "}
-                  {totalPages}
+                  {t("teacherLibrary.resultsPage", {
+                    page: formatNumber(locale, page),
+                    total: formatNumber(locale, questionPage.total),
+                    totalPages: formatNumber(locale, totalPages),
+                  })}
                 </span>
                 <div className="flex gap-2">
                   <Button asChild disabled={page <= 1} size="sm" variant="outline">
-                    <Link href={pageHref(Math.max(1, page - 1))}>Previous</Link>
+                    <Link href={pageHref(Math.max(1, page - 1))}>{t("teacherLibrary.previous")}</Link>
                   </Button>
                   <Button
                     asChild
@@ -788,7 +806,9 @@ export default async function TeacherBankQuestionsPage({
                     size="sm"
                     variant="outline"
                   >
-                    <Link href={pageHref(Math.min(totalPages, page + 1))}>Next</Link>
+                    <Link href={pageHref(Math.min(totalPages, page + 1))}>
+                      {t("teacherLibrary.next")}
+                    </Link>
                   </Button>
                 </div>
               </div>
@@ -804,13 +824,13 @@ export default async function TeacherBankQuestionsPage({
             <div className="p-10 text-center">
               <p className="font-semibold text-slate-900">
                 {hasQuestionFilters
-                  ? "No questions match these filters."
-                  : "This Library has no Ready questions."}
+                  ? t("teacherLibrary.noQuestionsMatch")
+                  : t("teacherLibrary.noReadyQuestions")}
               </p>
               {canManage ? (
                 <Button asChild className="mt-5" variant="outline">
                   <Link href={`/teacher/banks/${bank.id}/imports`}>
-                    Import material
+                    {t("teacherLibrary.importMaterial")}
                   </Link>
                 </Button>
               ) : null}

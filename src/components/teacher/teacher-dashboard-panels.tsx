@@ -6,17 +6,15 @@ import type {
   TeacherDashboardAssignmentAttention,
   TeacherDashboardSummary,
 } from "@/lib/teacher-dashboard";
+import { formatDate as formatLocaleDate, formatNumber as formatLocaleNumber } from "@/lib/i18n/locale";
 
 function formatNumber(value: number) {
-  return new Intl.NumberFormat("en").format(value);
+  return formatLocaleNumber("en", value);
 }
 
 function formatDate(value: string | null | undefined) {
   if (!value) return "No activity yet";
-
-  return new Intl.DateTimeFormat("en", {
-    dateStyle: "medium",
-  }).format(new Date(value));
+  return formatLocaleDate("en", value, { dateStyle: "medium" });
 }
 
 function formatPercent(value: number | null) {

@@ -6,9 +6,11 @@ import "./globals.css";
 
 import { AuthNav } from "@/components/auth-nav";
 import { AppChrome } from "@/components/app-chrome";
+import { LocaleProvider } from "@/components/i18n/locale-provider";
 import { ThemeProvider } from "@/components/theme-provider";
 import { Toaster } from "@/components/ui/sonner";
 import { getCurrentProfile } from "@/lib/auth/guards";
+import { getRequestLocale } from "@/lib/i18n/server";
 
 export const metadata: Metadata = {
   title: "EduStruct",
@@ -29,26 +31,31 @@ export default async function RootLayout({
 }: Readonly<{
   children: React.ReactNode;
 }>) {
-  const identity = await getWorkspaceIdentity();
+  const [identity, locale] = await Promise.all([
+    getWorkspaceIdentity(),
+    getRequestLocale(),
+  ]);
 
   return (
-    <html lang="en" suppressHydrationWarning>
-      <body>
-        <ThemeProvider
-          attribute="class"
-          defaultTheme="light"
-          enableSystem={false}
-          forcedTheme="light"
-          disableTransitionOnChange
-        >
-          <Suspense fallback={<main>{children}</main>}>
-            <AppChrome accountMenu={<AuthNav />} role={identity.role}>
-              {children}
-            </AppChrome>
-          </Suspense>
-          <Toaster />
-        </ThemeProvider>
-      </body>
+    <html lang={locale} suppressHydrationWarning>
+     <body>
+        <LocaleProvider locale={locale}>
+          <ThemeProvider
+            attribute="class"
+            defaultTheme="light"
+            enableSystem={false}
+            forcedTheme="light"
+            disableTransitionOnChange
+          >
+            <Suspense fallback={<main>{children}</main>}>
+              <AppChrome accountMenu={<AuthNav />} role={identity.role}>
+                {children}
+              </AppChrome>
+            </Suspense>
+            <Toaster />
+          </ThemeProvider>
+        </LocaleProvider>
+     </body>
     </html>
   );
 }

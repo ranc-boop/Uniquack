@@ -18,15 +18,15 @@ import {
   ClassroomProgressRing,
   ClassroomPublishCta,
   ClassroomQuickAction,
-  classroomStatusLabel,
-  formatClassroomDate,
-  formatClassroomDateTime,
 } from "@/app/teacher/classrooms/classroom-ui";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { requireTeacher } from "@/lib/auth/guards";
+import { formatDate as formatLocaleDate, formatDateTime as formatLocaleDateTime, formatNumber } from "@/lib/i18n/locale";
+import { getRequestLocale } from "@/lib/i18n/server";
+import { translate, type MessageKey } from "@/lib/i18n/messages";
 import { createClient } from "@/lib/supabase/server";
 import { listTeacherClassroomSummaries } from "@/lib/teacher-classrooms";
 
@@ -39,10 +39,46 @@ type TeacherClassroomsPageProps = {
   }>;
 };
 
+function classroomStatusLabel(locale: Parameters<typeof translate>[0], status: string) {
+  if (status === "active") return translate(locale, "classroom.statusActive");
+  if (status === "archived") return translate(locale, "classroom.statusArchived");
+  return translate(locale, "classroom.statusUnknown");
+}
+
+function assignmentStatusLabel(locale: Parameters<typeof translate>[0], status: string) {
+  if (status === "assigned") return translate(locale, "classroom.assignmentStatusAssigned");
+  if (status === "draft") return translate(locale, "classroom.assignmentStatusDraft");
+  if (status === "archived") return translate(locale, "classroom.assignmentStatusArchived");
+  return translate(locale, "classroom.assignmentStatusUnknown");
+}
+
+function formatDateForLocale(
+  locale: Parameters<typeof translate>[0],
+  value: string | null | undefined,
+  fallback: string,
+) {
+  return value
+    ? formatLocaleDate(locale, value, { dateStyle: "medium" })
+    : fallback;
+}
+
+function formatDateTimeForLocale(
+  locale: Parameters<typeof translate>[0],
+  value: string | null | undefined,
+  fallback: string,
+) {
+  return value
+    ? formatLocaleDateTime(locale, value, { dateStyle: "medium", timeStyle: "short" })
+    : fallback;
+}
+
 export default async function TeacherClassroomsPage({
   searchParams,
 }: TeacherClassroomsPageProps) {
   const profile = await requireTeacher();
+  const locale = await getRequestLocale();
+  const t = (key: MessageKey, values?: Record<string, number | string>) =>
+    translate(locale, key, values);
   const params = await searchParams;
   const supabase = await createClient();
   const classroomCreationRequestId = randomUUID();
@@ -65,17 +101,15 @@ export default async function TeacherClassroomsPage({
         <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
           <div className="max-w-4xl space-y-3">
             <div className="flex flex-wrap items-center gap-2">
-              <p className="teacher-eyebrow">Delivery layer</p>
-              <ClassroomBadge tone="sky">Library-first workflow</ClassroomBadge>
+              <p className="teacher-eyebrow">{t("classroom.deliveryLayer")}</p>
+              <ClassroomBadge tone="sky">{t("classroom.libraryFirstWorkflow")}</ClassroomBadge>
             </div>
             <div className="space-y-2">
               <h1 className="text-3xl font-semibold tracking-[-0.03em] text-[#1D1D1F]">
-                Classroom
+                {t("classroom.title")}
               </h1>
               <p className="max-w-3xl text-base leading-7 text-slate-600">
-                Classes are roster and delivery spaces. Build content in
-                Library or Blueprint, then assign selected work to
-                classes.
+                {t("classroom.openContext")}
               </p>
             </div>
           </div>
@@ -83,7 +117,7 @@ export default async function TeacherClassroomsPage({
             <Button asChild>
               <a className="inline-flex items-center gap-2" href="#create-class">
                 <Plus aria-hidden="true" className="h-4 w-4" />
-                Create Class
+                {t("classroom.create")}
               </a>
             </Button>
             <ClassroomPublishCta />
@@ -93,39 +127,39 @@ export default async function TeacherClassroomsPage({
 
       {params.saved ? (
         <p className="rounded-lg border border-cyan-200 bg-cyan-50 px-4 py-3 text-sm font-semibold text-cyan-900">
-          {params.saved}
+          {t("classroom.actionSaved")}
         </p>
       ) : null}
       {params.error ? (
         <p className="rounded-lg border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm font-medium text-destructive">
-          {params.error}
+          {t("classroom.actionFailed")}
         </p>
       ) : null}
 
       <section className="grid gap-3 md:grid-cols-4">
         <ClassroomMetricCard
-          description="Roster spaces you manage."
+          description={t("classroom.rosterSpaces")}
           icon={Users}
-          label="Classes"
-          value={classrooms.length}
+          label={t("classroom.classes")}
+          value={formatNumber(locale, classrooms.length)}
         />
         <ClassroomMetricCard
-          description="Active students across visible classes."
+          description={t("classroom.activeStudents")}
           icon={Users}
-          label="Students"
-          value={totals.students}
+          label={t("classroom.students")}
+          value={formatNumber(locale, totals.students)}
         />
         <ClassroomMetricCard
-          description="Current delivery events visible to students."
+          description={t("classroom.deliveryEvents")}
           icon={ClipboardCheck}
-          label="Active assignments"
-          value={totals.activeAssignments}
+          label={t("classroom.activeAssignments")}
+          value={formatNumber(locale, totals.activeAssignments)}
         />
         <ClassroomMetricCard
-          description="Draft, assigned, and archived class work."
+          description={t("classroom.classWork")}
           icon={Activity}
-          label="All assignments"
-          value={totals.assignments}
+          label={t("classroom.allAssignments")}
+          value={formatNumber(locale, totals.assignments)}
         />
       </section>
 
@@ -133,14 +167,15 @@ export default async function TeacherClassroomsPage({
         <section className="space-y-4">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
             <div>
-              <h2 className="text-xl font-bold text-slate-950">Your classes</h2>
+              <h2 className="text-xl font-bold text-slate-950">
+                {t("classroom.yourClasses")}
+              </h2>
               <p className="teacher-muted">
-                Open a class to view roster, delivery history, and feedback
-                context. Publish remains a top-level teacher workflow.
+                {t("classroom.openContext")}
               </p>
             </div>
             <Button asChild variant="outline">
-              <Link href="/student/classrooms/join">Preview student join</Link>
+              <Link href="/student/classrooms/join">{t("classroom.previewStudentJoin")}</Link>
             </Button>
           </div>
 
@@ -164,7 +199,7 @@ export default async function TeacherClassroomsPage({
                       <div className="min-w-0 space-y-2">
                         <div className="flex flex-wrap items-center gap-2">
                           <ClassroomBadge tone="sky">
-                            {classroomStatusLabel(classroom.status)}
+                            {classroomStatusLabel(locale, classroom.status)}
                           </ClassroomBadge>
                           {classroom.subject ? (
                             <ClassroomBadge>{classroom.subject}</ClassroomBadge>
@@ -175,7 +210,7 @@ export default async function TeacherClassroomsPage({
                         </h3>
                         <p className="line-clamp-2 text-sm leading-6 text-slate-600">
                           {classroom.description ||
-                            "Classroom delivery space for selected reviewed Library content."}
+                            t("classroom.deliverySpaceDescription")}
                         </p>
                       </div>
                     </div>
@@ -186,22 +221,22 @@ export default async function TeacherClassroomsPage({
                       <ClassroomProgressRing
                         helper={
                           classroom.completionRate === null
-                            ? "Completion appears after assigned work and student practice."
-                            : "Assigned work completed by active students."
+                            ? t("classroom.completionAppearsAfterPractice")
+                            : t("classroom.assignedWorkCompleted")
                         }
-                        label="Class completion"
+                        label={t("classroom.classCompletion")}
                         value={classroom.completionRate}
                       />
                       <dl className="grid gap-2 sm:grid-cols-2">
                         {[
-                          ["Students", classroom.studentCount],
-                          ["Active work", classroom.activeAssignmentCount],
-                          ["Drafts", classroom.draftAssignmentCount],
+                          [t("classroom.students"), formatNumber(locale, classroom.studentCount)],
+                          [t("classroom.activeWork"), formatNumber(locale, classroom.activeAssignmentCount)],
+                          [t("classroom.drafts"), formatNumber(locale, classroom.draftAssignmentCount)],
                           [
-                            "Blueprints",
+                            t("classroom.blueprints"),
                             classroom.linkedBlueprintCount === null
-                              ? "Planned"
-                              : classroom.linkedBlueprintCount,
+                              ? t("classroom.blueprintsPlanned")
+                              : formatNumber(locale, classroom.linkedBlueprintCount),
                           ],
                         ].map(([label, value]) => (
                           <div
@@ -221,7 +256,7 @@ export default async function TeacherClassroomsPage({
 
                     <div className="rounded-lg border border-slate-200 bg-white p-3">
                       <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-                        Latest assignment
+                        {t("classroom.latestAssignment")}
                       </p>
                       {classroom.latestAssignment ? (
                         <div className="mt-2 space-y-1">
@@ -229,14 +264,12 @@ export default async function TeacherClassroomsPage({
                             {classroom.latestAssignment.title}
                           </p>
                           <p className="text-xs capitalize text-slate-500">
-                            {classroom.latestAssignment.status} - Due{" "}
-                            {formatClassroomDate(classroom.latestAssignment.due_at)}
+                            {assignmentStatusLabel(locale, classroom.latestAssignment.status)} - {t("assignments.due")} {formatDateForLocale(locale, classroom.latestAssignment.due_at, t("classroom.notSet"))}
                           </p>
                         </div>
                       ) : (
                         <p className="mt-2 text-sm leading-6 text-slate-600">
-                          No assignments yet. Assign selected Library content when
-                          this class is ready.
+                          {t("classroom.noAssignments")} {t("classroom.assignWhenReady")}
                         </p>
                       )}
                     </div>
@@ -244,9 +277,9 @@ export default async function TeacherClassroomsPage({
                     <div className="mt-auto flex flex-col gap-3 border-t border-slate-100 pt-4">
                       <div className="flex flex-wrap items-center justify-between gap-3">
                         <p className="text-sm text-slate-600">
-                          Latest activity:{" "}
+                          {t("classroom.latestActivity")}:{" "}
                           <span className="font-semibold text-slate-900">
-                            {formatClassroomDateTime(classroom.latestActivityAt)}
+                            {formatDateTimeForLocale(locale, classroom.latestActivityAt, t("classroom.noActivityYet"))}
                           </span>
                         </p>
                         {classroom.joinCodeVisible ? (
@@ -255,7 +288,7 @@ export default async function TeacherClassroomsPage({
                           </code>
                         ) : classroom.joinCodeHint ? (
                           <span className="rounded-md border border-slate-200 bg-slate-50 px-2 py-1 text-xs font-semibold text-slate-600">
-                            Join code {classroom.joinCodeHint}
+                            {t("classroom.joinCode", { hint: classroom.joinCodeHint })}
                           </span>
                         ) : null}
                       </div>
@@ -265,13 +298,13 @@ export default async function TeacherClassroomsPage({
                           icon={BookOpenCheck}
                           variant="default"
                         >
-                          Open class
+                          {t("classroom.open")}
                         </ClassroomQuickAction>
                         <ClassroomQuickAction
                           href={`/teacher/classrooms/${classroom.id}/assignments`}
                           icon={ClipboardCheck}
                         >
-                          Assignment history
+                          {t("classroom.assignmentHistory")}
                         </ClassroomQuickAction>
                       </div>
                     </div>
@@ -281,21 +314,19 @@ export default async function TeacherClassroomsPage({
             </div>
           ) : (
             <section className="teacher-panel p-8 text-center">
-              <p className="teacher-eyebrow">No classes yet</p>
+              <p className="teacher-eyebrow">{t("classroom.noClasses")}</p>
               <h2 className="mt-2 text-2xl font-bold text-slate-950">
-                No classes yet. Create your first class after your banks are
-                ready.
+                {t("classroom.noClassesDescription")}
               </h2>
               <p className="mx-auto mt-2 max-w-2xl text-sm leading-6 text-slate-600">
-                Start with a Library, approve reusable content, then
-                create a class for roster and assignment delivery.
+                {t("classroom.publishDescription")}
               </p>
               <div className="mt-5 flex flex-wrap justify-center gap-2">
                 <Button asChild variant="outline">
-                  <Link href="/teacher/banks">Open Libraries</Link>
+                  <Link href="/teacher/banks">{t("classroom.openLibraries")}</Link>
                 </Button>
                 <Button asChild>
-                  <a href="#create-class">Create Class</a>
+                  <a href="#create-class">{t("classroom.create")}</a>
                 </Button>
               </div>
             </section>
@@ -310,24 +341,22 @@ export default async function TeacherClassroomsPage({
               </span>
               <div>
                 <h2 className="text-lg font-bold text-slate-950">
-                  Publish relationship
+                  {t("classroom.publishRelationship")}
                 </h2>
                 <p className="teacher-muted">
-                  Publish is where teachers distribute work. Classroom is where
-                  they view class-specific delivery and evidence.
+                  {t("classroom.publishContext")}
                 </p>
               </div>
             </div>
             <div className="mt-4">
-              <ClassroomPublishCta label="Open Publish" />
+              <ClassroomPublishCta label={t("classroom.openPublish")} />
             </div>
           </section>
 
           <section className="teacher-panel p-5" id="create-class">
-            <h2 className="text-lg font-bold text-slate-950">Create Class</h2>
+            <h2 className="text-lg font-bold text-slate-950">{t("classroom.create")}</h2>
             <p className="teacher-muted">
-              Join codes stay available to teachers on the class page and
-              continue to validate through the hashed code path.
+              {t("classroom.createDescription")}
             </p>
             <form action={createClassroom} className="mt-5 space-y-4">
               <input
@@ -336,43 +365,45 @@ export default async function TeacherClassroomsPage({
                 value={classroomCreationRequestId}
               />
               <div className="space-y-2">
-                <Label htmlFor="name">Class name</Label>
+                <Label htmlFor="name">{t("classroom.className")}</Label>
                 <Input
                   id="name"
                   maxLength={120}
                   name="name"
-                  placeholder="AP Calculus BC Period 2"
+                  placeholder={t("classroom.classNamePlaceholder")}
                   required
                 />
               </div>
               <div className="space-y-2">
-                <Label htmlFor="subject">Section / subject</Label>
+                <Label htmlFor="subject">{t("classroom.sectionSubject")}</Label>
                 <Input
                   id="subject"
                   maxLength={120}
                   name="subject"
-                  placeholder="Calculus"
+                  placeholder={t("classroom.subjectPlaceholder")}
                 />
               </div>
               <div className="space-y-2">
-                <Label htmlFor="description">Description</Label>
+                <Label htmlFor="description">{t("classroom.description")}</Label>
                 <Textarea
                   id="description"
                   maxLength={2000}
                   name="description"
-                  placeholder="Roster for spring review and practice."
+                  placeholder={t("classroom.descriptionPlaceholder")}
                   rows={4}
                 />
               </div>
               <FormSubmitButton
                 className="w-full"
-                pendingLabel="Creating class..."
+                pendingLabel={t("classroom.creating")}
               >
-                Create Class
+                {t("classroom.create")}
               </FormSubmitButton>
             </form>
             <p className="mt-4 text-xs leading-5 text-slate-500">
-              Signed in as {profile.username || profile.email || "teacher"}.
+              {t("classroom.signedInAs", {
+                user: profile.username || profile.email || t("classroom.teacherFallback"),
+              })}
             </p>
           </section>
         </aside>

@@ -151,9 +151,9 @@ async function runSourceSmoke() {
   );
 
   assert(
-    overview.includes("Class delivery snapshot") &&
+    overview.includes('t("classroomOverview.deliverySnapshot")') &&
       overview.includes("studentsNeedingAttention") &&
-      overview.includes("Manage joining") &&
+      overview.includes('t("classroomOverview.manageJoining")') &&
       helpers.includes("coTeacherCount") &&
       helpers.includes("assignmentSummary") &&
       helpers.includes("student_assignment_progress") &&
@@ -162,11 +162,11 @@ async function runSourceSmoke() {
   );
   assert(
     settings.includes("action={updateClassroomSettings}") &&
-      settings.includes("Join-code lifecycle") &&
-      settings.includes("Rotate join code") &&
-      settings.includes("Disable joining") &&
-      settings.includes("Archive classroom") &&
-      settings.includes("Reopen classroom") &&
+      settings.includes('t("classroomSettings.joinCodeLifecycle")') &&
+      settings.includes('t("classroomSettings.rotate")') &&
+      settings.includes('t("classroomSettings.disable")') &&
+      settings.includes('t("classroomSettings.archive")') &&
+      settings.includes('t("classroomSettings.reopen")') &&
       actions.includes("updateClassroomSettings") &&
       actions.includes("rotateClassroomJoinCode") &&
       actions.includes("disableClassroomJoining") &&
@@ -177,9 +177,9 @@ async function runSourceSmoke() {
     "settings must provide server-authorized metadata, join-code, archive, and reopen operations",
   );
   assert(
-    students.includes("Remove from active roster") &&
-      students.includes("Restore to active roster") &&
-      students.includes("preserve all history") &&
+    students.includes('t("classroomStudents.removeFromActiveRoster")') &&
+      students.includes('t("classroomStudents.restoreToActiveRoster")') &&
+      students.includes('t("classroomStudents.removeConfirmation")') &&
       actions.includes("removeClassroomStudent") &&
       actions.includes("restoreClassroomStudent") &&
       actions.includes("set_classroom_student_membership_status") &&
@@ -187,9 +187,9 @@ async function runSourceSmoke() {
     "student roster operations must use soft status changes and preserve history",
   );
   assert(
-    teachers.includes("Add co-teacher") &&
-      teachers.includes("source Question Banks") &&
-      teachers.includes("provider settings") &&
+    teachers.includes('t("classroomTeachers.addCoTeacher")') &&
+      teachers.includes('t("classroomTeachers.description")') &&
+      teachers.includes('t("classroomTeachers.teamDescription")') &&
       actions.includes("getOwnerClassroomForAction") &&
       actions.includes("addClassroomCoTeacher") &&
       actions.includes("removeClassroomCoTeacher") &&
@@ -204,7 +204,7 @@ async function runSourceSmoke() {
     "archived classrooms must be blocked from new assignments and Publish targets",
   );
   assert(
-    blueprints.includes("not sent directly to students") &&
+    blueprints.includes('t("classroomBlueprints.planningDescription")') &&
       !blueprints.includes("generate original") &&
       !blueprints.includes("auto-publish"),
     "linked Blueprint planning must remain reference-only",

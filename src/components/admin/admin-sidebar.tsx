@@ -16,6 +16,7 @@ import {
 } from "lucide-react";
 
 import { AdminPendingLink } from "@/components/admin/admin-pending-link";
+import { useLocale } from "@/components/i18n/locale-provider";
 import { cn } from "@/lib/utils";
 
 type AdminNavItem = {
@@ -30,35 +31,6 @@ type AdminNavGroup = {
   label: string;
 };
 
-const adminNavGroups: AdminNavGroup[] = [
-  {
-    label: "",
-    items: [
-      { exact: true, href: "/admin", icon: LayoutDashboard, label: "Overview" },
-    ],
-  },
-  {
-    label: "Content Governance",
-    items: [
-      { exact: true, href: "/admin/questions", icon: Library, label: "Public Library" },
-      { href: "/admin/review", icon: ClipboardCheck, label: "Approval Queue" },
-      { href: "/admin/tags", icon: Tags, label: "Taxonomy" },
-      { href: "/admin/blueprints", icon: Boxes, label: "Blueprints" },
-      { href: "/admin/videos", icon: PlaySquare, label: "Videos" },
-    ],
-  },
-  {
-    label: "Platform",
-    items: [
-      { href: "/admin/questions/banks", icon: Library, label: "Library Support" },
-      { href: "/admin/practice-frameworks", icon: BookOpen, label: "Practice Frameworks" },
-      { href: "/admin/imports", icon: FileJson, label: "Imports" },
-      { href: "/admin/users", icon: Users, label: "Users" },
-      { href: "/admin/ai-settings", icon: Settings2, label: "AI Settings" },
-    ],
-  },
-];
-
 function isActiveItem(item: AdminNavItem, pathname: string) {
   if (item.exact) {
     return pathname === item.href;
@@ -69,9 +41,38 @@ function isActiveItem(item: AdminNavItem, pathname: string) {
 
 function AdminNavGroups() {
   const pathname = usePathname();
+  const { t } = useLocale();
+  const adminNavGroups: AdminNavGroup[] = [
+    {
+      label: "",
+      items: [
+        { exact: true, href: "/admin", icon: LayoutDashboard, label: t("admin.overview") },
+      ],
+    },
+    {
+      label: t("admin.contentGovernance"),
+      items: [
+        { exact: true, href: "/admin/questions", icon: Library, label: t("admin.publicLibrary") },
+        { href: "/admin/review", icon: ClipboardCheck, label: t("admin.approvalQueue") },
+        { href: "/admin/tags", icon: Tags, label: t("admin.taxonomy") },
+        { href: "/admin/blueprints", icon: Boxes, label: t("teacher.blueprints") },
+        { href: "/admin/videos", icon: PlaySquare, label: t("admin.videos") },
+      ],
+    },
+    {
+      label: t("admin.platformOperations"),
+      items: [
+        { href: "/admin/questions/banks", icon: Library, label: t("admin.librarySupport") },
+        { href: "/admin/practice-frameworks", icon: BookOpen, label: t("admin.practiceFrameworks") },
+        { href: "/admin/imports", icon: FileJson, label: t("admin.imports") },
+        { href: "/admin/users", icon: Users, label: t("admin.users") },
+        { href: "/admin/ai-settings", icon: Settings2, label: t("admin.aiSettings") },
+      ],
+    },
+  ];
 
   return (
-    <nav aria-label="Admin navigation" className="space-y-5">
+    <nav aria-label={t("admin.navigation")} className="space-y-5">
       {adminNavGroups.map((group) => (
           <div className="space-y-2" key={group.label || "primary"}>
             {group.label ? <p className="workspace-nav-label">{group.label}</p> : null}
@@ -108,11 +109,13 @@ function AdminNavGroups() {
 }
 
 export function AdminSidebar() {
+  const { t } = useLocale();
+
   return (
     <div>
       <details className="rounded-lg border bg-card p-3 shadow-sm lg:hidden">
         <summary className="cursor-pointer list-none text-sm font-semibold">
-          Admin menu
+          {t("admin.menu")}
         </summary>
         <div className="mt-4">
           <AdminNavGroups />

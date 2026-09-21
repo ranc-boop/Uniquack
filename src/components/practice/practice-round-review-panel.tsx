@@ -1,6 +1,7 @@
 "use client";
 
 import { FeedbackText } from "@/components/math-content";
+import { useLocale } from "@/components/i18n/locale-provider";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -27,16 +28,18 @@ export function PracticeRoundReviewPanel({
   questionCount: number;
   review: PracticeReviewResponse;
 }) {
+  const { t } = useLocale();
+
   return (
     <Card className="student-panel">
       <CardHeader>
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
-            <CardTitle className="text-xl">Round review</CardTitle>
+            <CardTitle className="text-xl">{t("practice.roundReview")}</CardTitle>
             {isStreaming ? (
               <p aria-live="polite" className="mt-2 flex items-center gap-2 text-sm text-slate-500" role="status">
                 <span aria-hidden="true" className="loading-indicator-spinner size-3" />
-                Reviewing your answers…
+                {t("practice.reviewingAnswers")}
               </p>
             ) : null}
             <FeedbackText
@@ -51,7 +54,7 @@ export function PracticeRoundReviewPanel({
       <CardContent className="space-y-4">
         {review.roundPatterns?.length ? (
           <div className="rounded-lg border border-sky-100 bg-sky-50/70 p-4">
-            <p className="text-xs font-bold uppercase tracking-[0.16em] text-sky-700">Round patterns</p>
+            <p className="text-xs font-bold uppercase tracking-[0.16em] text-sky-700">{t("practice.roundPatterns")}</p>
             <div className="mt-3 space-y-2">
               {review.roundPatterns.map((pattern, index) => (
                 <FeedbackText
@@ -66,7 +69,7 @@ export function PracticeRoundReviewPanel({
           </div>
         ) : null}
         <div className="rounded-lg border border-slate-100 bg-slate-50/70 p-4">
-          <p className="text-xs font-bold uppercase tracking-[0.16em] text-slate-400">Next round focus</p>
+          <p className="text-xs font-bold uppercase tracking-[0.16em] text-slate-400">{t("practice.nextRoundFocus")}</p>
           <FeedbackText
             className="mt-2 border-none bg-transparent p-0 text-sm leading-6 text-slate-700"
             compact
@@ -75,19 +78,19 @@ export function PracticeRoundReviewPanel({
           />
         </div>
         <div className="space-y-2">
-          <Label htmlFor="next-round-goal">Add your thoughts for the next round</Label>
+          <Label htmlFor="next-round-goal">{t("practice.nextRoundThoughts")}</Label>
           <Input
             id="next-round-goal"
             maxLength={PRACTICE_INPUT_LIMITS.NEXT_ROUND_NOTE_CHARS}
             onChange={(event) => onNextRoundNoteChange(event.target.value)}
-            placeholder="Optional: ask for a focus, pace, or difficulty change"
+            placeholder={t("practice.nextRoundPlaceholder")}
             value={nextRoundNote}
           />
         </div>
         <div className="flex flex-wrap items-end justify-between gap-3">
           <div className="space-y-2">
             <Label className="text-sm font-bold text-slate-800" htmlFor="review-next-count">
-              Questions
+              {t("practice.questions")}
             </Label>
             <Input
               className="h-11 w-28 border-slate-200 bg-white text-base shadow-sm"
@@ -100,7 +103,7 @@ export function PracticeRoundReviewPanel({
             />
           </div>
           <Button className="h-11 px-6" disabled={isPending} onClick={onStartNextRound} type="button">
-            Start next round
+            {t("practice.startNextRound")}
           </Button>
         </div>
       </CardContent>

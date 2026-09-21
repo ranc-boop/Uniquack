@@ -40,6 +40,7 @@ import {
   PracticeAssignmentHandoff,
 } from "@/components/practice/practice-assignment-handoff";
 import { PracticeWorkspaceSkeleton } from "@/components/practice/practice-workspace-skeleton";
+import { useLocale } from "@/components/i18n/locale-provider";
 import { StudentPendingLink } from "@/components/student/student-pending-link";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -133,12 +134,13 @@ export function PracticeAgentClient({
   exitHref = assignmentId ? `/student/work/${assignmentId}` : "/student",
   testOnlyDelayedHydration = false,
 }: PracticeAgentClientProps) {
+  const { formatNumber, t } = useLocale();
   const isAssignmentMode = Boolean(assignmentId);
   const exitLabel = isAssignmentMode
     ? exitHref === "/student/work"
-      ? "Back to My Work"
-      : "Back to Assignment"
-    : "Back to Dashboard";
+      ? t("practice.backToMyWork")
+      : t("practice.backToAssignment")
+    : t("practice.backToDashboard");
   const clientReady = useSyncExternalStore(
     subscribeToClientReady,
     getClientReadySnapshot,
@@ -1764,7 +1766,7 @@ export function PracticeAgentClient({
         <main className="relative min-w-0 space-y-4 px-0 xl:px-2">
           <div className="sticky top-16 z-50 flex min-h-11 items-center border-b border-slate-200/80 bg-[#F5F5F7]/95 py-2 backdrop-blur-md">
             <Button asChild className="min-h-11" variant="outline">
-              <StudentPendingLink feedback="page" href={exitHref} pendingLabel="Leaving…">
+              <StudentPendingLink feedback="page" href={exitHref} pendingLabel={t("practice.leaving")}>
                 <ArrowLeft aria-hidden="true" className="size-4" />
                 {exitLabel}
               </StudentPendingLink>
@@ -1773,7 +1775,7 @@ export function PracticeAgentClient({
           {error ? (
             <div className="flex items-start justify-between gap-3 rounded-xl border border-destructive/20 bg-destructive/5 px-4 py-3 text-sm text-destructive" role="alert">
               <span className="min-w-0 flex-1">{error}</span>
-              <Button className="shrink-0" onClick={() => setError(null)} size="sm" type="button" variant="ghost">Dismiss</Button>
+              <Button className="shrink-0" onClick={() => setError(null)} size="sm" type="button" variant="ghost">{t("practice.dismiss")}</Button>
             </div>
           ) : null}
           {sessionAction ? (
@@ -1781,11 +1783,12 @@ export function PracticeAgentClient({
           ) : null}
           {assignmentLaunch ? (
             <section className="rounded-lg border border-sky-200 bg-sky-50 px-4 py-3 text-sm text-sky-900">
-              <p className="font-bold">Assignment practice</p>
+              <p className="font-bold">{t("practice.assignmentPractice")}</p>
               <p className="mt-1 leading-6">
-                Using {assignmentLaunch.itemCount} assigned question
-                {assignmentLaunch.itemCount === 1 ? "" : "s"} from{" "}
-                <span className="font-semibold">{assignmentLaunch.title}</span>.
+                {t("practice.assignmentScope", {
+                  count: formatNumber(assignmentLaunch.itemCount),
+                  title: assignmentLaunch.title,
+                })}
               </p>
             </section>
           ) : null}
@@ -1794,13 +1797,13 @@ export function PracticeAgentClient({
               <div className="mx-auto w-full max-w-6xl space-y-8 text-center">
                 <div className="space-y-3">
                   <Badge className="border-sky-200 bg-sky-50 text-sky-800 hover:bg-sky-50" variant="outline">
-                    Practice Agent
+                    {t("practice.agent")}
                   </Badge>
                   <h1 className="text-4xl font-bold tracking-tight text-slate-950 sm:text-5xl">
-                    Ready when you are.
+                    {t("practice.ready")}
                   </h1>
                   <p className="mx-auto max-w-2xl text-base leading-7 text-slate-600">
-                    Tell O2I what you want to practice, or pick a starter goal below.
+                    {t("practice.starterDescription")}
                   </p>
                 </div>
                 {!assignmentId ? (
@@ -1818,7 +1821,7 @@ export function PracticeAgentClient({
                   <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
                     <div className="flex min-w-0 flex-1 items-center px-3">
                       <Input
-                        aria-label="Practice goal"
+                        aria-label={t("practice.goal")}
                         className="h-14 border-0 bg-transparent px-0 text-base shadow-none ring-offset-0 placeholder:text-slate-400 focus-visible:ring-0 focus-visible:ring-offset-0 sm:text-lg"
                         id="goal"
                         maxLength={PRACTICE_INPUT_LIMITS.GOAL_CHARS}
@@ -1828,7 +1831,7 @@ export function PracticeAgentClient({
                             requestRecommendation();
                           }
                         }}
-                        placeholder="What do you want to practice?"
+                        placeholder={t("practice.goalPlaceholder")}
                         value={goal}
                       />
                     </div>
@@ -1843,9 +1846,9 @@ export function PracticeAgentClient({
                           />
                           <label className="flex h-10 items-center gap-2 rounded-full border border-slate-200 bg-slate-50 px-3 text-sm font-semibold text-slate-600">
                             <SlidersHorizontal className="size-4" aria-hidden="true" />
-                            <span>Questions</span>
+                            <span>{t("practice.questions")}</span>
                             <input
-                              aria-label="Question count"
+                              aria-label={t("practice.questionCount")}
                               className="w-10 bg-transparent text-center font-mono text-slate-900 outline-none"
                               max={8}
                               min={1}
@@ -1857,7 +1860,7 @@ export function PracticeAgentClient({
                         </>
                       ) : null}
                       <Button
-                        aria-label="Generate round"
+                        aria-label={t("practice.generateRound")}
                         className="size-12 rounded-full p-0"
                         disabled={isPending}
                         onClick={() => requestRecommendation()}
@@ -1877,14 +1880,14 @@ export function PracticeAgentClient({
                 <div className="flex items-center justify-between gap-3">
                   <div className="min-w-0">
                     <h1 className="truncate text-xl font-semibold tracking-tight text-slate-950">
-                      {activeSession?.title || "Practice"}
+                      {activeSession?.title || t("student.practice")}
                     </h1>
                     {phase === "feedback" && review?.nextRoundGoal ? (
                       <FeedbackText className="mt-1 truncate border-none bg-transparent p-0 text-sm text-slate-500" compact value={review.nextRoundGoal} />
                     ) : null}
                   </div>
                   <Button
-                    aria-label="Show study details"
+                    aria-label={t("practice.studyDetails")}
                     className="xl:hidden"
                     onClick={showStudyDetails}
                     size="icon"
@@ -1950,7 +1953,7 @@ export function PracticeAgentClient({
                 <CardHeader>
                   <div>
                     <div>
-                      <CardTitle className="text-xl">Your round</CardTitle>
+                      <CardTitle className="text-xl">{t("practice.yourRound")}</CardTitle>
                       <FeedbackText className="mt-2 border-none bg-transparent p-0 text-sm text-slate-600" compact value={recommendation.roundGoal} />
                     </div>
                   </div>
@@ -1964,8 +1967,7 @@ export function PracticeAgentClient({
                       tabIndex={-1}
                     >
                       <p className="font-bold" id="practice-answer-error-heading">
-                        Answer the highlighted question
-                        {answerErrorQuestionIndexes.length === 1 ? "" : "s"} before submitting.
+                        {t("practice.answerHighlighted")}
                       </p>
                       <ul className="mt-2 flex flex-wrap gap-x-4 gap-y-2">
                         {answerErrorQuestionIndexes.map((questionIndex) => (
@@ -1974,7 +1976,7 @@ export function PracticeAgentClient({
                               className="font-semibold underline underline-offset-4"
                               href={`#practice-question-${questionIndex}`}
                             >
-                              Question {questionIndex}
+                              {t("practice.questionNumber", { count: formatNumber(questionIndex) })}
                             </a>
                           </li>
                         ))}
@@ -2013,7 +2015,7 @@ export function PracticeAgentClient({
                         onClick={submitRound}
                         type="button"
                       >
-                        {isPending ? "Submitting round..." : "Submit round"}
+                        {isPending ? t("practice.submittingRound") : t("practice.submitRound")}
                       </Button>
                     </div>
                   ) : null}
@@ -2049,7 +2051,7 @@ export function PracticeAgentClient({
         >
           {!isRightSidebarCollapsed ? (
             <button
-              aria-label="Resize study sidebar"
+              aria-label={t("practice.resizeSidebar")}
               className="student-focus-ring group absolute -left-2 top-0 z-40 hidden h-full w-4 cursor-col-resize rounded-full bg-transparent xl:block"
               onPointerDown={(event) => beginSidebarResize("right", event)}
               type="button"
@@ -2061,7 +2063,7 @@ export function PracticeAgentClient({
           {isRightSidebarCollapsed ? (
             <div className="hidden h-full min-h-64 flex-col items-center border-l border-slate-200 bg-slate-50/80 px-2 py-5 xl:flex">
               <Button
-                aria-label="Expand study sidebar"
+                aria-label={t("practice.expandSidebar")}
                 className="size-10 rounded-xl bg-slate-200/70 text-slate-900 hover:bg-slate-200"
                 onClick={showStudyDetails}
                 size="icon"
@@ -2072,7 +2074,7 @@ export function PracticeAgentClient({
               </Button>
               <div className="mt-8 flex flex-col items-center gap-4">
                 <Button
-                  aria-label="Show study state"
+                  aria-label={t("practice.showStudyState")}
                   className="size-10"
                   onClick={showStudyDetails}
                   size="icon"
@@ -2089,12 +2091,12 @@ export function PracticeAgentClient({
           ) : (
           <div className="min-h-full border-l border-slate-200 bg-slate-50/80 px-4 py-6">
           <div className="sticky top-3 z-30 mb-7 flex items-center justify-between gap-2 bg-slate-50/95 pb-2">
-            <p className="student-eyebrow xl:hidden">Study State</p>
+            <p className="student-eyebrow xl:hidden">{t("practice.studyState")}</p>
             <p className="hidden text-sm font-bold text-slate-950 xl:block">
-              Study state
+              {t("practice.studyState")}
             </p>
             <Button
-              aria-label="Collapse study sidebar"
+              aria-label={t("practice.collapseSidebar")}
               className="inline-flex size-9 shrink-0 rounded-xl bg-slate-100 text-slate-700 shadow-sm hover:bg-slate-200"
               onClick={() => setIsRightSidebarCollapsed(true)}
               size="icon"
@@ -2108,7 +2110,7 @@ export function PracticeAgentClient({
             <div key={activeSession.id} className="space-y-4">
               <Card className="border-0 bg-white shadow-none ring-1 ring-slate-200/80">
                 <CardHeader className="pb-3">
-                  <CardTitle className="text-base">Practice sources</CardTitle>
+                  <CardTitle className="text-base">{t("practice.sources")}</CardTitle>
                 </CardHeader>
                 <CardContent className="flex flex-wrap gap-2">
                   {activeSession.sourceScope.length ? activeSession.sourceScope.map((source) => (
@@ -2116,43 +2118,43 @@ export function PracticeAgentClient({
                       {source.name}
                     </Badge>
                   )) : (
-                    <span className="text-xs text-slate-500">Choose sources before starting the first round.</span>
+                    <span className="text-xs text-slate-500">{t("practice.chooseSources")}</span>
                   )}
                 </CardContent>
               </Card>
               <ReadableDataCard
-                empty="No outline yet. Generate a round and the agent will form a lightweight study path here."
-                title="Session outline"
+                empty={t("practice.outlineEmpty")}
+                title={t("practice.sessionOutline")}
                 value={activeSession.sessionPlan}
               >
                 <details className="rounded-lg border border-slate-200 bg-slate-50/70 p-3 text-xs">
-                  <summary className="cursor-pointer font-semibold text-slate-700">Guide the outline</summary>
+                  <summary className="cursor-pointer font-semibold text-slate-700">{t("practice.guideOutline")}</summary>
                   <div className="mt-3 space-y-2">
-                    <Label htmlFor="outline-notes">Your notes</Label>
+                    <Label htmlFor="outline-notes">{t("practice.yourNotes")}</Label>
                     <Textarea
                       className="min-h-24 bg-white text-sm"
                       id="outline-notes"
                       maxLength={PRACTICE_INPUT_LIMITS.OUTLINE_NOTES_CHARS}
                       onChange={(event) => setOutlineNotes(event.target.value)}
-                      placeholder="Prioritize, skip, slow down, or change difficulty."
+                      placeholder={t("practice.outlinePlaceholder")}
                       value={outlineNotes}
                     />
                     <Button disabled={outlineSaving || isPending} onClick={saveOutlineNotes} size="sm" type="button" variant="outline">
-                      Save notes
+                      {t("practice.saveNotes")}
                     </Button>
                   </div>
                 </details>
               </ReadableDataCard>
               {recommendation?.roundContract ? (
                 <ReadableDataCard
-                  empty="Generate a round to see why these questions were chosen."
-                  title="Why this round"
+                  empty={t("practice.roundReasonEmpty")}
+                  title={t("practice.whyThisRound")}
                   value={recommendation.roundContract}
                 />
               ) : null}
               <ReadableDataCard
-                empty="No saved practice thread yet. After a round, this will show the latest task, review evidence, and checkpoints."
-                title="Practice thread"
+                empty={t("practice.threadEmpty")}
+                title={t("practice.thread")}
                 value={threadStudyContext(activeSession)}
               />
             </div>
@@ -2160,7 +2162,7 @@ export function PracticeAgentClient({
 
           <Card className="mt-4 border-0 bg-white shadow-none ring-1 ring-slate-200/80">
             <CardHeader>
-              <CardTitle className="text-lg">Missed questions</CardTitle>
+              <CardTitle className="text-lg">{t("practice.missedQuestions")}</CardTitle>
             </CardHeader>
             <CardContent className="space-y-3">
               {wrongQuestions.length ? wrongQuestions.map((question) => (
@@ -2169,11 +2171,11 @@ export function PracticeAgentClient({
                     <div>
                       <p className="text-sm font-bold leading-snug text-slate-900">{question.title}</p>
                       <p className="mt-1 text-xs leading-5 text-slate-500">
-                        {question.questionCode} · missed {question.missCount} time{question.missCount === 1 ? "" : "s"}
+                        {question.questionCode} · {t("practice.missedCount", { count: formatNumber(question.missCount) })}
                       </p>
                     </div>
                     <Button disabled={isPending} onClick={() => practiceWrongQuestion(question)} size="sm" type="button" variant="outline">
-                      Practice
+                      {t("student.practice")}
                     </Button>
                   </div>
                   {question.lastExplanation ? (
@@ -2181,13 +2183,13 @@ export function PracticeAgentClient({
                   ) : null}
                   {question.contentHtml ? (
                     <details className="mt-2 rounded-md border border-slate-200 bg-slate-50/70 p-2 text-xs">
-                      <summary className="cursor-pointer font-medium">Saved question snapshot</summary>
+                      <summary className="cursor-pointer font-medium">{t("practice.savedSnapshot")}</summary>
                       <QuestionText className="mt-2 border-none bg-transparent p-0" compact value={question.contentHtml} />
                     </details>
                   ) : null}
                 </div>
               )) : (
-                <p className="text-sm text-muted-foreground">No active missed questions in this session.</p>
+                <p className="text-sm text-muted-foreground">{t("practice.noActiveMissed")}</p>
               )}
             </CardContent>
           </Card>

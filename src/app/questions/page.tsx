@@ -7,6 +7,9 @@ import { Label } from "@/components/ui/label";
 import { QuestionBankClient } from "@/components/question-bank-client";
 import type { TaxonomyTagChipAssignment } from "@/components/tags/taxonomy-tag-chips";
 import { htmlToPlainTextExcerpt } from "@/lib/html/excerpt";
+import { formatNumber } from "@/lib/i18n/locale";
+import { translate } from "@/lib/i18n/messages";
+import { getRequestLocale } from "@/lib/i18n/server";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
 import { createClient } from "@/lib/supabase/server";
 import { loadTaxonomyCatalog } from "@/lib/tags/taxonomy-db";
@@ -82,7 +85,7 @@ function pageHref({
 }
 
 export default async function QuestionsPage({ searchParams }: QuestionsPageProps) {
-  const params = await searchParams;
+  const [params, locale] = await Promise.all([searchParams, getRequestLocale()]);
   const search = normalizeSearch(params.q);
   const minDifficulty = parseDifficulty(params.min, 0);
   const maxDifficulty = parseDifficulty(params.max, 1000);
@@ -157,26 +160,26 @@ export default async function QuestionsPage({ searchParams }: QuestionsPageProps
     <div className="teacher-shell space-y-5">
       <div className="student-hero">
         <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
-          <h1 className="text-3xl font-bold tracking-tight text-slate-950">Public Library</h1>
+          <h1 className="text-3xl font-bold tracking-tight text-slate-950">{translate(locale, "library.title")}</h1>
           <Button asChild variant="outline">
-            <Link href="/mistakes">Review mistakes</Link>
+            <Link href="/mistakes">{translate(locale, "library.reviewMistakes")}</Link>
           </Button>
         </div>
       </div>
       <form className="student-panel space-y-4 p-4">
         <div className="grid gap-4 md:grid-cols-[minmax(0,1.5fr)_10rem_10rem_auto]">
         <div className="space-y-2">
-          <Label className="font-bold text-slate-800" htmlFor="q">Search</Label>
+          <Label className="font-bold text-slate-800" htmlFor="q">{translate(locale, "common.search")}</Label>
           <Input
             className="h-11 border-slate-200 bg-white shadow-sm"
             id="q"
             name="q"
             defaultValue={search}
-            placeholder="Title or code"
+            placeholder={translate(locale, "library.searchPlaceholder")}
           />
         </div>
         <div className="space-y-2">
-          <Label className="font-bold text-slate-800" htmlFor="min">Min difficulty</Label>
+          <Label className="font-bold text-slate-800" htmlFor="min">{translate(locale, "library.minDifficulty")}</Label>
           <Input
             className="h-11 border-slate-200 bg-white shadow-sm"
             id="min"
@@ -188,7 +191,7 @@ export default async function QuestionsPage({ searchParams }: QuestionsPageProps
           />
         </div>
         <div className="space-y-2">
-          <Label className="font-bold text-slate-800" htmlFor="max">Max difficulty</Label>
+          <Label className="font-bold text-slate-800" htmlFor="max">{translate(locale, "library.maxDifficulty")}</Label>
           <Input
             className="h-11 border-slate-200 bg-white shadow-sm"
             id="max"
@@ -200,16 +203,16 @@ export default async function QuestionsPage({ searchParams }: QuestionsPageProps
           />
         </div>
         <div className="flex items-end gap-2">
-          <Button className="h-11" type="submit">Filter</Button>
+          <Button className="h-11" type="submit">{translate(locale, "library.filter")}</Button>
           <Button asChild type="button" variant="outline">
-            <Link href="/questions">Reset</Link>
+            <Link href="/questions">{translate(locale, "library.reset")}</Link>
           </Button>
         </div>
         </div>
       </form>
       {error || taxonomyError ? (
         <p role="alert" className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
-          {error?.message ?? taxonomyError?.message}
+          {translate(locale, "common.requestFailed")}
         </p>
       ) : null}
       {questionRows.length ? (
@@ -224,7 +227,7 @@ export default async function QuestionsPage({ searchParams }: QuestionsPageProps
           <div className="flex min-h-40 items-center justify-center p-6 text-center">
             <div className="max-w-md space-y-2">
               <h2 className="text-base font-bold text-slate-950">
-                No questions found
+                {translate(locale, "library.noQuestions")}
               </h2>
             </div>
           </div>
@@ -232,8 +235,11 @@ export default async function QuestionsPage({ searchParams }: QuestionsPageProps
       )}
       <div className="student-panel flex flex-wrap items-center justify-between gap-3 p-3 text-sm text-slate-600">
         <p>
-          Showing {questionRows.length ? from + 1 : 0}-
-          {from + questionRows.length} of {totalCount} published questions.
+          {translate(locale, "library.resultsSummary", {
+            from: formatNumber(locale, questionRows.length ? from + 1 : 0),
+            to: formatNumber(locale, from + questionRows.length),
+            total: formatNumber(locale, totalCount),
+          })}
         </p>
         <div className="flex items-center gap-2">
           <Button asChild size="sm" variant="outline" disabled={page <= 1}>
@@ -246,11 +252,14 @@ export default async function QuestionsPage({ searchParams }: QuestionsPageProps
                 search,
               })}
             >
-              Previous
+              {translate(locale, "library.previous")}
             </Link>
           </Button>
           <span>
-            Page {Math.min(page, totalPages)} of {totalPages}
+            {translate(locale, "library.pageOf", {
+              page: formatNumber(locale, Math.min(page, totalPages)),
+              total: formatNumber(locale, totalPages),
+            })}
           </span>
           <Button asChild size="sm" variant="outline" disabled={page >= totalPages}>
             <Link
@@ -262,7 +271,7 @@ export default async function QuestionsPage({ searchParams }: QuestionsPageProps
                 search,
               })}
             >
-              Next
+              {translate(locale, "library.next")}
             </Link>
           </Button>
         </div>

@@ -23,6 +23,8 @@ import {
 } from "@/lib/question-banks";
 import { createClient } from "@/lib/supabase/server";
 import { loadTaxonomyCatalog } from "@/lib/tags/taxonomy-db";
+import { getRequestLocale } from "@/lib/i18n/server";
+import { translate } from "@/lib/i18n/messages";
 
 import {
   importBankJsonDraftsInteractive,
@@ -46,19 +48,23 @@ import { BankManualQuestionForm } from "../../bank-manual-question-form";
 
 export const dynamic = "force-dynamic";
 
-function SetupNeededState() {
+function SetupNeededState({ locale }: { locale: Parameters<typeof translate>[0] }) {
+  const t = (
+    key: Parameters<typeof translate>[1],
+    values?: Parameters<typeof translate>[2],
+  ) => translate(locale, key, values);
   return (
     <BankWorkbenchPage>
       <section className="rounded-lg border border-slate-200/80 bg-white/90 p-6 shadow-sm">
-        <p className="student-eyebrow">Setup needed</p>
+        <p className="student-eyebrow">{t("teacherLibrary.setupNeeded")}</p>
         <h1 className="mt-2 text-2xl font-bold text-slate-950">
-          Library import scope is not available yet.
+          {t("teacherLibrary.importScopeUnavailable")}
         </h1>
         <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-600">
-          Apply clean migration 0027 before using teacher-private Library imports.
+          {t("teacherLibrary.applyImportMigration")}
         </p>
         <Button asChild className="mt-5" variant="outline">
-          <Link href="/teacher/banks">Back to Libraries</Link>
+          <Link href="/teacher/banks">{t("teacherLibrary.backToLibraries")}</Link>
         </Button>
       </section>
     </BankWorkbenchPage>
@@ -97,6 +103,11 @@ export default async function TeacherBankImportsPage({
     saved?: string;
   }>;
 }) {
+  const locale = await getRequestLocale();
+  const t = (
+    key: Parameters<typeof translate>[1],
+    values?: Parameters<typeof translate>[2],
+  ) => translate(locale, key, values);
   const profilePromise = requireTeacher();
   const [{ bankId }, query, supabase] = await Promise.all([
     params,
@@ -150,7 +161,7 @@ export default async function TeacherBankImportsPage({
     pageData = await loadPageData();
   } catch (error) {
     if (error instanceof QuestionBankSchemaMissingError) {
-      return <SetupNeededState />;
+      return <SetupNeededState locale={locale} />;
     }
 
     throw error;
@@ -199,7 +210,7 @@ export default async function TeacherBankImportsPage({
 
   return (
     <BankWorkbenchPage>
-      <BankHeroPanel subtitle={bank.name} title="Import" />
+      <BankHeroPanel subtitle={bank.name} title={t("teacherLibrary.import")} />
 
       <BankRouteTabs bankId={bank.id} currentUserRole={currentUserRole} />
 
@@ -207,18 +218,18 @@ export default async function TeacherBankImportsPage({
 
       {query.saved ? (
         <section className="rounded-lg border border-emerald-200 bg-emerald-50 p-4 text-sm font-semibold text-emerald-800">
-          {query.saved}
+          {t("teacherLibrary.saved")}
         </section>
       ) : null}
       {query.error ? (
         <section className="rounded-lg border border-rose-200 bg-rose-50 p-4 text-sm font-semibold text-rose-800">
-          {query.error}
+          {t("common.requestFailed")}
         </section>
       ) : null}
 
       {queueSetupNeeded ? (
         <section className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm leading-6 text-amber-900">
-          Durable AI queue setup is needed before new Library AI Parsing runs can start. Existing sources and Review Drafts are unchanged.
+          {t("teacherLibrary.aiQueueSetupNeeded")}
         </section>
       ) : null}
 
@@ -229,7 +240,7 @@ export default async function TeacherBankImportsPage({
           retryAction={retryTeacherAIProviderJob}
           returnTo={`/teacher/banks/${bankId}/imports?mode=ai`}
           reviewHref={`/teacher/banks/${bankId}/review`}
-          title="Library AI Parsing status"
+              title={t("teacherLibrary.aiParsingStatus")}
         />
       ) : null}
 
@@ -244,9 +255,9 @@ export default async function TeacherBankImportsPage({
           {mode === "manual" ? (
             <section className="rounded-lg border border-slate-200 bg-white shadow-sm">
               <div className="border-b border-slate-200 px-5 py-4">
-                <p className="teacher-eyebrow">Manual</p>
+                <p className="teacher-eyebrow">{t("teacherLibrary.manual")}</p>
                 <h2 className="mt-1 text-lg font-bold text-slate-950">
-                  Create question
+                  {t("teacherLibrary.createQuestion")}
                 </h2>
               </div>
               <div className="p-5">
@@ -262,9 +273,9 @@ export default async function TeacherBankImportsPage({
           {mode === "json" ? (
             <section className="rounded-lg border border-slate-200 bg-white shadow-sm">
               <div className="border-b border-slate-200 px-5 py-4">
-                <p className="teacher-eyebrow">JSON</p>
+                <p className="teacher-eyebrow">{t("teacherLibrary.json")}</p>
                 <h2 className="mt-1 text-lg font-bold text-slate-950">
-                  Validate and import structured drafts
+                  {t("teacherLibrary.importStructuredDrafts")}
                 </h2>
               </div>
               <div className="p-5">
@@ -273,7 +284,9 @@ export default async function TeacherBankImportsPage({
                   importAction={importJsonAction}
                   previewAction={previewJsonAction}
                   questionsHref={`/teacher/banks/${bank.id}/questions`}
-                  resultDescription={`Imported questions are private Review Drafts in ${bank.name}. Review is required before assignment.`}
+                  resultDescription={t("teacherLibrary.importedPrivateReviewDrafts", {
+                    bank: bank.name,
+                  })}
                   reviewHref={`/teacher/banks/${bank.id}/review`}
                   scope={{ kind: "bank", bankId: bank.id, role: workspaceRole }}
                   scopeLabel={bank.name}
@@ -286,22 +299,21 @@ export default async function TeacherBankImportsPage({
           {mode === "ai" ? (
           <section className="rounded-lg border border-slate-200/80 bg-white/85 shadow-[0_18px_48px_-40px_rgba(15,23,42,0.7)] ring-1 ring-slate-950/5 backdrop-blur">
             <div className="border-b border-slate-200 px-5 py-4">
-              <p className="teacher-eyebrow">Teacher PDF import</p>
+                <p className="teacher-eyebrow">{t("teacherLibrary.teacherPdfImport")}</p>
               <h2 className="mt-1 text-lg font-bold text-slate-950">
-                Upload PDF to create Library Review Drafts
+                {t("teacherLibrary.uploadPdfReviewDrafts")}
               </h2>
               <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-600">
-                AI Parsing runs server-side and keeps generated questions as
-                private drafts in this Library until review.
+                {t("teacherLibrary.aiParsingServerSide")}
               </p>
             </div>
             {!parsingProfileState?.available ? (
               <div className="border-t border-amber-200 bg-amber-50 p-4 text-sm leading-6 text-amber-900">
                 <p className="font-semibold">
-                  AI PDF parsing is not enabled for this site or organization yet.
+                  {t("teacherLibrary.aiPdfParsingUnavailable")}
                 </p>
                 <p className="mt-1">
-                  A platform admin must enable a shared AI provider in Admin / AI Settings.
+                  {t("teacherLibrary.adminEnableAiProvider")}
                 </p>
               </div>
             ) : null}
@@ -314,8 +326,7 @@ export default async function TeacherBankImportsPage({
               schemaAvailable={pdfBurstSchemaAvailable}
             />
             <div className="border-t border-amber-200 bg-amber-50 p-4 text-sm leading-6 text-amber-900">
-              Review is required before assignment. Uploading does not publish
-              questions or expose the source Library to students.
+              {t("teacherLibrary.reviewGateNotice")}
             </div>
           </section>
           ) : null}
@@ -327,6 +338,7 @@ export default async function TeacherBankImportsPage({
               canQueueCoverageRecovery={canImport}
               coverageRecoveryAction={queueBankPdfCoverageRecovery}
               importBatches={importBatches}
+              locale={locale}
           />
         ) : null}
       </section>

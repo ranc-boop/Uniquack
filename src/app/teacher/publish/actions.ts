@@ -3,13 +3,11 @@
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 
-import {
-  formatActionError,
-  redirectWithSaved,
-} from "@/lib/actions/feedback";
+import { redirectWithSaved } from "@/lib/actions/feedback";
 import { requireTeacher } from "@/lib/auth/guards";
 import { getTeacherQuestionBankDetail } from "@/lib/question-banks";
 import { createClient } from "@/lib/supabase/server";
+import type { AssignmentErrorCode } from "@/lib/teacher-assignment-error";
 import {
   canPublishFromBank,
   listPublishableBankQuestions,
@@ -38,16 +36,16 @@ export type AssignmentComposerActionState =
   | { status: "idle" }
   | {
       status: "error";
+      code: AssignmentErrorCode | "request_failed";
       field: AssignmentComposerErrorField;
-      message: string;
     };
 
 class AssignmentInputError extends Error {
   constructor(
-    message: string,
+    readonly code: AssignmentErrorCode,
     readonly field: AssignmentComposerErrorField,
   ) {
-    super(message);
+    super(code);
   }
 }
 
@@ -59,7 +57,7 @@ function normalizeDueAt(value: string) {
 
   if (Number.isNaN(parsed.getTime())) {
     throw new AssignmentInputError(
-      "Enter a valid due date and time, or leave it blank.",
+      "invalid_due_at",
       "dueAt",
     );
   }
@@ -96,8 +94,8 @@ export async function publishQuestionBankAssignments(
           : "form";
       throw new AssignmentInputError(
         field === "title"
-          ? "Enter an Assignment title between 1 and 180 characters."
-          : issue?.message || "Check the Assignment details and try again.",
+          ? "invalid_title"
+          : "invalid_details",
         field,
       );
     }
@@ -109,21 +107,21 @@ export async function publishQuestionBankAssignments(
 
     if (!selectedBankQuestionIds.length) {
       throw new AssignmentInputError(
-        "Choose at least one approved Library question.",
+        "missing_content",
         "content",
       );
     }
 
     if (!selectedClassroomIds.length) {
       throw new AssignmentInputError(
-        "Choose one classroom target.",
+        "missing_classroom",
         "classroom",
       );
     }
 
     if (selectedClassroomIds.length !== 1) {
       throw new AssignmentInputError(
-        "Create one classroom delivery at a time so every result is clear and recoverable.",
+        "multiple_classrooms",
         "classroom",
       );
     }
@@ -137,13 +135,13 @@ export async function publishQuestionBankAssignments(
 
     if (!bankDetail || bankDetail.bank.status !== "active") {
       throw new AssignmentInputError(
-        "The selected source Library is no longer active. Return to Content and choose another Library.",
+        "inactive_library",
         "content",
       );
     }
 
     if (!canPublishFromBank(bankDetail.currentUserRole)) {
-      throw new Error("Only Library owners and editors can create assignments.");
+      throw new AssignmentInputError("forbidden", "form");
     }
 
     const publishableQuestions = await listPublishableBankQuestions({
@@ -155,11 +153,9 @@ export async function publishQuestionBankAssignments(
         questions: publishableQuestions,
         selectedBankQuestionIds,
       });
-    } catch (error) {
+    } catch {
       throw new AssignmentInputError(
-        error instanceof Error
-          ? error.message
-          : "One or more selected questions are no longer assignment-ready.",
+        "selection_unavailable",
         "content",
       );
     }
@@ -170,12 +166,12 @@ export async function publishQuestionBankAssignments(
       .eq("status", "active");
 
     if (classroomError) {
-      throw new Error(classroomError.message);
+      throw new Error("classroom_read_failed");
     }
 
     if ((classrooms ?? []).length !== selectedClassroomIds.length) {
       throw new AssignmentInputError(
-        "One or more selected classrooms are unavailable or not manageable.",
+        "classroom_unavailable",
         "classroom",
       );
     }
@@ -187,7 +183,7 @@ export async function publishQuestionBankAssignments(
       )
     ) {
       throw new AssignmentInputError(
-        "The selected classroom must belong to the source Library organization.",
+        "classroom_organization_mismatch",
         "classroom",
       );
     }
@@ -208,11 +204,11 @@ export async function publishQuestionBankAssignments(
     );
 
     if (error) {
-      throw new Error(error.message);
+      throw new Error("assignment_create_failed");
     }
 
     if (!assignmentId) {
-      throw new Error("Assignment was not created from this Library.");
+      throw new Error("assignment_create_missing");
     }
 
     revalidatePath(`/teacher/classrooms/${classroomId}`);
@@ -234,15 +230,15 @@ export async function publishQuestionBankAssignments(
   } catch (error) {
     if (error instanceof AssignmentInputError) {
       return {
+        code: error.code,
         field: error.field,
-        message: error.message,
         status: "error",
       };
     }
 
     return {
+      code: "request_failed",
       field: "form",
-      message: formatActionError(error),
       status: "error",
     };
   }

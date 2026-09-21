@@ -24,6 +24,10 @@ function assert(condition, message) {
   if (!condition) throw new Error(message);
 }
 
+function usesMessageKeys(source, ...keys) {
+  return keys.every((key) => source.includes(`"${key}"`));
+}
+
 function summarizeSupabaseError(error) {
   if (!error) return "unknown error";
   return [error.message, error.code, error.details, error.hint].filter(Boolean).join(" | ");
@@ -108,14 +112,20 @@ async function runSourceSmoke() {
   const classroomHelpers = await read("src/lib/teacher-classrooms.ts");
 
   assert(
-    listPage.includes("Classroom") &&
-      listPage.includes("Classes are roster and delivery spaces") &&
-      listPage.includes("Create Class") &&
-      classroomUi.includes("Publish to classes") &&
-      listPage.includes("Your classes") &&
-      listPage.includes("No classes yet. Create your first class after your banks are") &&
-      listPage.includes("Class completion") &&
-      listPage.includes("Latest assignment"),
+    usesMessageKeys(
+      listPage,
+      "classroom.title",
+      "classroom.openContext",
+      "classroom.create",
+      "classroom.classCompletion",
+      "classroom.latestAssignment",
+    ) &&
+      usesMessageKeys(classroomUi, "classroom.publishToClasses") &&
+      usesMessageKeys(
+        listPage,
+        "classroom.yourClasses",
+        "classroom.noClassesDescription",
+      ),
     "/teacher/classrooms must render a Google-Classroom-like card grid with publish handoff",
   );
   assert(
@@ -126,29 +136,36 @@ async function runSourceSmoke() {
       classroomHelpers.includes("assignment_practice_sessions"),
     "classroom helper must compute bounded roster, assignment, completion, and blueprint context",
   );
-  for (const label of [
-    "Overview",
-    "Assignments",
-    "Students",
-    "Teachers",
-    "Progress",
-    "Blueprints",
-    "Settings",
+  for (const key of [
+    "classroom.overview",
+    "classroom.assignments",
+    "classroom.students",
+    "classroom.teachers",
+    "classroom.progress",
+    "classroom.blueprints",
+    "classroom.settings",
   ]) {
-    assert(classroomUi.includes(label), `classroom route tabs missing ${label}`);
+    assert(usesMessageKeys(classroomUi, key), `classroom route tabs missing ${key}`);
   }
   assert(
-    overviewPage.includes("Recent assignments") &&
-      overviewPage.includes("Students can join the roster") &&
-      overviewPage.includes("Students needing attention") &&
-      overviewPage.includes("Class team") &&
-      overviewPage.includes("Open Blueprint Library"),
+    usesMessageKeys(
+      overviewPage,
+      "classroomOverview.recentAssignments",
+      "classroomOverview.joinCodeRosterDescription",
+      "classroomOverview.studentsNeedingAttention",
+      "classroomOverview.classTeam",
+      "classroomOverview.openBlueprintLibrary",
+    ),
     "classroom overview must show stats, join code, recent assignments, attention, and blueprint context",
   );
   assert(
     peoplePage.includes("/students") &&
-      studentsPage.includes("Remove from active roster") &&
-      studentsPage.includes("preserve all history") &&
+      usesMessageKeys(
+        studentsPage,
+        "classroomStudents.removeFromActiveRoster",
+        "classroomStudents.removeConfirmation",
+        "classroomStudents.rosterDescription",
+      ) &&
       studentsPage.includes("restoreClassroomStudent") &&
       classroomActions.includes("createClassroomJoinCode") &&
       classroomActions.includes("rotateClassroomJoinCode") &&
@@ -159,40 +176,53 @@ async function runSourceSmoke() {
     "Students section must show roster boundary copy, join-code recovery, and safe soft-remove action",
   );
   assert(
-    teachersPage.includes("Add co-teacher") &&
-      teachersPage.includes("separate Library membership") &&
+    usesMessageKeys(
+        teachersPage,
+        "classroomTeachers.addCoTeacher",
+        "classroomTeachers.teamDescription",
+      ) &&
       classroomActions.includes("addClassroomCoTeacher") &&
       classroomActions.includes("removeClassroomCoTeacher") &&
       !classroomActions.includes("bank_members"),
     "Teachers section must manage co-teachers without granting source bank membership",
   );
   assert(
-    assignmentsPage.includes("Publish new bank work") &&
-      assignmentsPage.includes("Use Publish") &&
-      assignmentsPage.includes("compatibility shortcut"),
+    usesMessageKeys(
+      assignmentsPage,
+      "assignments.deliveryHistoryDescription",
+      "assignments.publishNewWork",
+    ),
     "Assignments section must remain history/detail and point to top-level Publish",
   );
   assert(
-    analyticsPage.includes("Completion summaries use real assignment and Practice evidence") &&
-    analyticsPage.includes("Progress") &&
-    analyticsPage.includes("Taxonomy mastery") &&
-    analyticsPage.includes("Mistake patterns") &&
-    analyticsPage.includes("Assignment feedback") &&
-    analyticsPage.includes("Open an assignment detail to save a private note") &&
+    usesMessageKeys(
+      analyticsPage,
+      "classroomAnalytics.title",
+      "classroomAnalytics.assignmentCompletionSummaries",
+      "classroomAnalytics.summaryDescription",
+      "classroomAnalytics.noAnalyticsDescription",
+    ) &&
+    analyticsPage.includes("progressSummary") &&
+    analyticsPage.includes("linkedPracticeSessionCount") &&
     !analyticsPage.includes("Feedback drafting"),
     "Analytics / Feedback must show real bounded summaries, live assignment feedback, and honest placeholders",
   );
   assert(
-    blueprintsPage.includes("Blueprints linked to this class will appear here") &&
-      blueprintsPage.includes("Open Blueprint Library") &&
+    usesMessageKeys(
+        blueprintsPage,
+        "classroomBlueprints.noLinkedTitle",
+        "classroomBlueprints.openLibrary",
+      ) &&
       !blueprintsPage.includes("generate original"),
     "Linked Blueprints section must not implement blueprint generation",
   );
   assert(
-    settingsPage.includes("Join-code lifecycle") &&
-      settingsPage.includes("Archive classroom") &&
-      settingsPage.includes("Reopen classroom") &&
-      settingsPage.includes("hashed code path") &&
+    usesMessageKeys(
+        settingsPage,
+        "classroomSettings.joinCodeLifecycle",
+        "classroomSettings.archive",
+        "classroomSettings.reopen",
+      ) &&
       classroomActions.includes("archiveClassroom") &&
       classroomActions.includes("reopenClassroom") &&
       classroomActions.includes('status: "archived"'),

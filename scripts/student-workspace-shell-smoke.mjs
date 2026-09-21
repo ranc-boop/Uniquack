@@ -58,14 +58,12 @@ const [
 ]);
 
 const studentNavLabels = [
-  "Dashboard",
-  "My Work",
-  "Practice",
-  "Mistakes",
-  "Study Library",
-  "Study Groups",
-  "Public Library",
-  "Progress / Feedback",
+  't("student.dashboard")',
+  't("student.myWork")',
+  't("student.practice")',
+  't("student.mistakes")',
+  't("student.publicLibrary")',
+  't("student.progressFeedback")',
 ];
 
 for (const label of studentNavLabels) {
@@ -86,8 +84,7 @@ for (const label of teacherOnlyLabels) {
 }
 
 assert(studentLayout.includes("StudentWorkspaceNav"), "student layout must render the student workspace nav");
-assert(studentPage.includes("Student Dashboard"), "/student must render a real dashboard");
-assert(studentPage.includes("It does not open the teacher"), "student dashboard must preserve teacher private library boundary copy");
+assert(studentPage.includes('translate(locale, "student.dashboard")'), "/student must render a real dashboard");
 assert(studentShell.includes("StudentWorkspaceShell"), "student shell component must exist");
 assert(studentShell.includes("StudentModuleCard"), "student module card component must exist");
 assert(
@@ -98,11 +95,11 @@ assert(
   "student shell/nav must remain server-compatible",
 );
 assert(
-  studyLibraryPage.includes("without creating a new backend") &&
-    studyGroupsPage.includes("do not grant access to teacher private Libraries") &&
-    publicLibraryPage.includes("Public does not mean verified") &&
-    progressPage.includes("Feedback history"),
-  "student placeholder modules must be clearly shell-only and boundary-safe",
+  studyLibraryPage.includes('redirect("/student/public-library")') &&
+    studyGroupsPage.includes('redirect("/student/classrooms")') &&
+    publicLibraryPage.includes('translate(locale, "student.publicLibrary")') &&
+    progressPage.includes('translate(locale, "student.progressFeedback")'),
+  "student workspace modules must remain scoped redirects or localized shells",
 );
 assert(
   routeSmoke.includes('checkAdminRoute("/student", "Student Dashboard")') &&

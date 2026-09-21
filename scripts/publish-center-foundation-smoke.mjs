@@ -164,7 +164,7 @@ async function insertBankQuestionFixture({
   const { data: question, error: questionError } = await admin
     .from("questions")
     .insert({
-      answer_spec: { kind: "exact_text", value: "2" },
+      answer_spec: { accepted_answers: ["2"], kind: "fill_blank" },
       content_html: "<p>Solve x + 3 = 5.</p>",
       content_source: "Solve x + 3 = 5.",
       content_source_format: "plain_text",
@@ -173,6 +173,7 @@ async function insertBankQuestionFixture({
       options: [],
       organization_id: organizationId,
       owner_bank_id: bankId,
+      approval_status: "approved",
       question_code: `publish-center-smoke-${suffix}-${codeSuffix}`,
       question_type: "fill_blank",
       solution_html: "<p>Subtract 3 from both sides.</p>",
@@ -254,16 +255,16 @@ async function staticChecks() {
   const smokeAll = await read("scripts/smoke-all.mjs");
 
   assert(
-    publishPage.includes("Choose one source Library") &&
+    publishPage.includes('translate(locale, "assignment.chooseSourceLibrary")') &&
       publishPage.includes("Blueprint") &&
       publishPage.includes("<QuestionChecklist") &&
       publishPage.includes("<ClassroomTargets") &&
       publishPage.includes("<AssignmentSelectionSummary") &&
       publishPage.includes('kind="assignment-selection"') &&
-      assignmentComposer.includes("1. Select content") &&
-      assignmentComposer.includes("2. Choose classroom") &&
-      assignmentComposer.includes("3. Review and assign") &&
-      assignmentComposer.includes("Publish Assignment") &&
+      assignmentComposer.includes('t("assignment.selectContent")') &&
+      assignmentComposer.includes('t("assignment.chooseAssignmentClassroom")') &&
+      assignmentComposer.includes('t("assignment.reviewAndCreate")') &&
+      assignmentComposer.includes('t("assignment.publish")') &&
       !publishPage.includes("What students can and cannot see") &&
       !publishPage.includes("Selected students later") &&
       !publishPage.includes("Safety gates"),

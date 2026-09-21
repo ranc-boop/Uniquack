@@ -155,8 +155,8 @@ async function runSourceSmoke() {
       newPage.includes("questionTypeMix") &&
       newPage.includes("requiredElements") &&
       newPage.includes("answerPattern") &&
-      newPage.includes("Blueprint output must flow through Review Drafts and Library approval") &&
-      bankBlueprintsPage.includes("Build from Library questions") &&
+      newPage.includes("Generation, Review Draft creation") &&
+      bankBlueprintsPage.includes('t("teacherLibrary.createBlueprintFromLibrary")') &&
       bankBlueprintsPage.includes("/teacher/blueprints/new?bankId="),
     "Blueprint builder UI must expose bank source selection and structured planning fields",
   );

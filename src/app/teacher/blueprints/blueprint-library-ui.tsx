@@ -22,6 +22,8 @@ import {
 import { readinessWarnings, sourceExampleCount } from "@/lib/teacher-blueprint-builder";
 import type { QuestionBlueprintFolderTreeNode } from "@/lib/blueprints/question-blueprint-folders";
 import { cn } from "@/lib/utils";
+import { formatDate as formatLocaleDate } from "@/lib/i18n/locale";
+import { getRequestLocale } from "@/lib/i18n/server";
 
 const visibilityTone: Record<string, string> = {
   organization: "border-indigo-200 bg-indigo-50 text-indigo-800",
@@ -54,16 +56,6 @@ export function BlueprintBadge({
       {children}
     </span>
   );
-}
-
-function formatDate(value: string | null) {
-  if (!value) return "Not yet";
-
-  return new Intl.DateTimeFormat("en", {
-    day: "numeric",
-    month: "short",
-    year: "numeric",
-  }).format(new Date(value));
 }
 
 export function SetupNeededState() {
@@ -234,7 +226,8 @@ export function NewFolderPanel() {
   );
 }
 
-export function BlueprintCard({ blueprint }: { blueprint: TeacherBlueprintLibraryItem }) {
+export async function BlueprintCard({ blueprint }: { blueprint: TeacherBlueprintLibraryItem }) {
+  const locale = await getRequestLocale();
   return (
     <article className="teacher-card-hover teacher-panel flex h-full flex-col justify-between gap-5 p-5">
       <div className="space-y-4">
@@ -305,7 +298,13 @@ export function BlueprintCard({ blueprint }: { blueprint: TeacherBlueprintLibrar
       </div>
       <div className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-200 pt-4">
         <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-          Updated {formatDate(blueprint.updated_at)}
+          Updated {blueprint.updated_at
+            ? formatLocaleDate(locale, blueprint.updated_at, {
+                day: "numeric",
+                month: "short",
+                year: "numeric",
+              })
+            : "Not yet"}
         </p>
         <TeacherPendingLink
           className={buttonVariants({ variant: "outline" })}

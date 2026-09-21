@@ -14,8 +14,6 @@ import {
   ClassroomBadge,
   ClassroomMetricCard,
   ClassroomRouteTabs,
-  classroomStatusLabel,
-  formatClassroomDateTime,
 } from "@/app/teacher/classrooms/classroom-ui";
 import { CopyJoinCodeButton } from "@/app/teacher/classrooms/copy-join-code-button";
 import { FormSubmitButton } from "@/components/form-submit-button";
@@ -24,6 +22,9 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { requireTeacher } from "@/lib/auth/guards";
+import { formatDateTime as formatLocaleDateTime } from "@/lib/i18n/locale";
+import { getRequestLocale } from "@/lib/i18n/server";
+import { translate, type MessageKey } from "@/lib/i18n/messages";
 import { createClient } from "@/lib/supabase/server";
 import { getTeacherClassroomWorkspace } from "@/lib/teacher-classrooms";
 
@@ -34,11 +35,33 @@ type ClassroomSettingsPageProps = {
   searchParams: Promise<{ error?: string; newCode?: string; saved?: string }>;
 };
 
+function classroomStatusLabel(
+  locale: Parameters<typeof translate>[0],
+  status: string,
+) {
+  if (status === "active") return translate(locale, "classroom.statusActive");
+  if (status === "archived") return translate(locale, "classroom.statusArchived");
+  return translate(locale, "classroom.statusUnknown");
+}
+
+function formatActivity(
+  locale: Parameters<typeof translate>[0],
+  value: string | null | undefined,
+  fallback: string,
+) {
+  return value
+    ? formatLocaleDateTime(locale, value, { dateStyle: "medium", timeStyle: "short" })
+    : fallback;
+}
+
 export default async function ClassroomSettingsPage({
   params,
   searchParams,
 }: ClassroomSettingsPageProps) {
   await requireTeacher();
+  const locale = await getRequestLocale();
+  const t = (key: MessageKey, values?: Record<string, number | string>) =>
+    translate(locale, key, values);
   const { id } = await params;
   const query = await searchParams;
   const supabase = await createClient();
@@ -60,17 +83,18 @@ export default async function ClassroomSettingsPage({
       <section className="teacher-hero">
         <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
           <div className="space-y-2">
-            <p className="teacher-eyebrow">Settings</p>
+            <p className="teacher-eyebrow">{t("classroomSettings.title")}</p>
             <h1 className="break-words text-3xl font-bold tracking-tight text-slate-950">
               {classroom.name}
             </h1>
             <p className="max-w-3xl text-base leading-7 text-slate-600">
-              Review class identity, teacher-visible join code, and safe
-              lifecycle boundaries.
+              {t("classroomSettings.description")}
             </p>
           </div>
           <Button asChild variant="outline">
-            <Link href={`/teacher/classrooms/${classroom.id}`}>Back to overview</Link>
+            <Link href={`/teacher/classrooms/${classroom.id}`}>
+              {t("classroomSettings.backToOverview")}
+            </Link>
           </Button>
         </div>
       </section>
@@ -78,56 +102,57 @@ export default async function ClassroomSettingsPage({
       <ClassroomRouteTabs classroomId={classroom.id} />
       {query.saved ? (
         <p className="rounded-lg border border-cyan-200 bg-cyan-50 px-4 py-3 text-sm font-semibold text-cyan-900">
-          {query.saved}
+          {t("classroomSettings.actionSaved")}
         </p>
       ) : null}
       {query.error ? (
         <p className="rounded-lg border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm font-medium text-destructive">
-          {query.error}
+          {t("classroomSettings.actionFailed")}
         </p>
       ) : null}
 
       <section className="grid gap-3 md:grid-cols-3">
         <ClassroomMetricCard
-          description="Current class lifecycle state."
+          description={t("classroomSettings.statusDescription")}
           icon={Settings}
-          label="Status"
-          value={classroomStatusLabel(classroom.status)}
+          label={t("classroomSettings.status")}
+          value={classroomStatusLabel(locale, classroom.status)}
         />
         <ClassroomMetricCard
-          description="Teacher-visible enrollment code."
+          description={t("classroomSettings.joinCodeDescription")}
           icon={KeyRound}
-          label="Join code"
+          label={t("classroomSettings.joinCode")}
           value={
             joiningEnabled
               ? visibleJoinCode
               : classroom.status === "archived"
-                ? "Archived"
-                : classroom.joinCodeStatus ?? "Disabled"
+                ? t("classroom.statusArchived")
+                : classroom.joinCodeStatus ?? t("classroomSettings.joiningDisabled")
           }
         />
         <ClassroomMetricCard
-          description="Last classroom or delivery activity."
+          description={t("classroomAnalytics.latestActivityDescription")}
           icon={Settings}
-          label="Recent activity"
-          value={formatClassroomDateTime(classroom.latestActivityAt)}
+          label={t("classroomSettings.recentActivity")}
+          value={formatActivity(locale, classroom.latestActivityAt, t("classroom.noActivityYet"))}
         />
       </section>
 
       <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_22rem]">
         <section className="teacher-panel overflow-hidden">
           <div className="border-b border-slate-200 bg-white/70 p-5">
-            <h2 className="text-xl font-bold text-slate-950">Class identity</h2>
+            <h2 className="text-xl font-bold text-slate-950">
+              {t("classroomSettings.classIdentity")}
+            </h2>
             <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-600">
-              Editing classroom metadata changes only this delivery space. It
-              does not change bank ownership or assignment history.
+              {t("classroomSettings.identityDescription")}
             </p>
           </div>
           <form action={updateClassroomSettings} className="space-y-5 p-5">
             <input name="classroomId" type="hidden" value={classroom.id} />
             <div className="grid gap-4 md:grid-cols-2">
               <div className="space-y-2">
-                <Label htmlFor="classroom-name">Class name</Label>
+                <Label htmlFor="classroom-name">{t("classroomSettings.className")}</Label>
                 <Input
                   defaultValue={classroom.name}
                   id="classroom-name"
@@ -137,7 +162,9 @@ export default async function ClassroomSettingsPage({
                 />
               </div>
               <div className="space-y-2">
-                <Label htmlFor="classroom-subject">Subject / section</Label>
+                <Label htmlFor="classroom-subject">
+                  {t("classroomSettings.subjectSection")}
+                </Label>
                 <Input
                   defaultValue={classroom.subject ?? ""}
                   id="classroom-subject"
@@ -147,7 +174,9 @@ export default async function ClassroomSettingsPage({
               </div>
             </div>
             <div className="space-y-2">
-              <Label htmlFor="classroom-description">Description</Label>
+              <Label htmlFor="classroom-description">
+                {t("classroomSettings.descriptionLabel")}
+              </Label>
               <Textarea
                 defaultValue={classroom.description ?? ""}
                 id="classroom-description"
@@ -158,20 +187,20 @@ export default async function ClassroomSettingsPage({
             </div>
             <div className="grid gap-3 rounded-lg border border-slate-200 bg-slate-50 p-4 text-sm md:grid-cols-2">
               <div>
-                <p className="font-semibold text-slate-950">Created</p>
+                <p className="font-semibold text-slate-950">{t("classroomSettings.created")}</p>
                 <p className="text-slate-600">
-                  {formatClassroomDateTime(classroom.created_at)}
+                  {formatActivity(locale, classroom.created_at, t("classroom.noActivityYet"))}
                 </p>
               </div>
               <div>
-                <p className="font-semibold text-slate-950">Updated</p>
+                <p className="font-semibold text-slate-950">{t("classroomSettings.updated")}</p>
                 <p className="text-slate-600">
-                  {formatClassroomDateTime(classroom.updated_at)}
+                  {formatActivity(locale, classroom.updated_at, t("classroom.noActivityYet"))}
                 </p>
               </div>
             </div>
-            <FormSubmitButton pendingLabel="Saving...">
-              Save classroom settings
+            <FormSubmitButton pendingLabel={t("classroomSettings.saving")}>
+              {t("classroomSettings.save")}
             </FormSubmitButton>
           </form>
         </section>
@@ -179,24 +208,27 @@ export default async function ClassroomSettingsPage({
         <aside className="space-y-6">
           <section className="teacher-panel p-5">
             <h2 className="text-lg font-bold text-slate-950">
-              Join-code lifecycle
+              {t("classroomSettings.joinCodeLifecycle")}
             </h2>
             <p className="mt-2 text-sm leading-6 text-slate-600">
-              Joining can be enabled, disabled, or rotated here. Validation
-              still uses the hashed code path, and students only join the roster.
+              {t("classroomSettings.joinCodeLifecycleDescription")}
             </p>
             {joiningEnabled && visibleJoinCode ? (
               <div className="mt-4 space-y-3">
                 <code className="block rounded-lg border border-sky-200 bg-sky-50 px-4 py-3 text-center text-2xl font-bold tracking-[0.16em] text-slate-950">
                   {visibleJoinCode}
                 </code>
-                <CopyJoinCodeButton code={visibleJoinCode} />
+                <CopyJoinCodeButton
+                  code={visibleJoinCode}
+                  copiedLabel={t("classroomSettings.copied")}
+                  copyLabel={t("classroomSettings.copyCode")}
+                />
               </div>
             ) : (
               <p className="mt-4 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm font-semibold text-amber-900">
                 {classroom.status === "archived"
-                  ? "Joining is blocked while archived."
-                  : "Joining is currently disabled."}
+                  ? t("classroomSettings.joiningArchived")
+                  : t("classroomSettings.joiningDisabled")}
               </p>
             )}
             <div className="mt-4 grid gap-2">
@@ -206,11 +238,11 @@ export default async function ClassroomSettingsPage({
                     <input name="classroomId" type="hidden" value={classroom.id} />
                     <FormSubmitButton
                       className="w-full"
-                      pendingLabel="Rotating..."
+                      pendingLabel={t("classroomSettings.rotating")}
                       variant="outline"
                     >
                       <RotateCcw aria-hidden="true" className="mr-2 h-4 w-4" />
-                      Rotate join code
+                      {t("classroomSettings.rotate")}
                     </FormSubmitButton>
                   </form>
                   {joiningEnabled ? (
@@ -218,10 +250,10 @@ export default async function ClassroomSettingsPage({
                       <input name="classroomId" type="hidden" value={classroom.id} />
                       <FormSubmitButton
                         className="w-full"
-                        pendingLabel="Disabling..."
+                        pendingLabel={t("classroomSettings.disabling")}
                         variant="outline"
                       >
-                        Disable joining
+                        {t("classroomSettings.disable")}
                       </FormSubmitButton>
                     </form>
                   ) : (
@@ -230,32 +262,38 @@ export default async function ClassroomSettingsPage({
                       <input name="redirectTo" type="hidden" value="settings" />
                       <FormSubmitButton
                         className="w-full"
-                        pendingLabel="Enabling..."
+                        pendingLabel={t("classroomSettings.enabling")}
                         variant="outline"
                       >
-                        Enable joining
+                        {t("classroomSettings.enable")}
                       </FormSubmitButton>
                     </form>
                   )}
                 </>
               ) : null}
               <p className="text-xs leading-5 text-slate-500">
-                Last join-code change: {formatClassroomDateTime(classroom.joinCodeUpdatedAt)}
+                {t("classroomSettings.lastJoinCodeChange", {
+                  date: formatActivity(
+                    locale,
+                    classroom.joinCodeUpdatedAt,
+                    t("classroom.noActivityYet"),
+                  ),
+                })}
               </p>
             </div>
           </section>
 
           <section className="teacher-panel p-5">
             <div className="flex flex-wrap items-center gap-2">
-              <h2 className="text-lg font-bold text-slate-950">Lifecycle</h2>
+              <h2 className="text-lg font-bold text-slate-950">
+                {t("classroomSettings.lifecycle")}
+              </h2>
               <ClassroomBadge tone={classroom.status === "active" ? "sky" : "amber"}>
-                {classroomStatusLabel(classroom.status)}
+                {classroomStatusLabel(locale, classroom.status)}
               </ClassroomBadge>
             </div>
             <p className="mt-2 text-sm leading-6 text-slate-600">
-              Archive blocks new joins and removes this class from new Publish
-              targets. It does not delete assignments, attempts, evidence,
-              feedback, or memberships.
+              {t("classroomSettings.lifecycleDescription")}
             </p>
             {classroom.status === "active" ? (
               <form action={archiveClassroom} className="mt-4 space-y-3">
@@ -269,24 +307,26 @@ export default async function ClassroomSettingsPage({
                     value="yes"
                   />
                   <span>
-                    Archive this classroom and preserve historical assignment
-                    evidence.
+                    {t("classroomSettings.archiveConfirmation")}
                   </span>
                 </label>
                 <FormSubmitButton
                   className="w-full border-amber-300 text-amber-900 hover:bg-amber-50"
-                  pendingLabel="Archiving..."
+                  pendingLabel={t("classroomSettings.archiving")}
                   variant="outline"
                 >
                   <Archive aria-hidden="true" className="mr-2 h-4 w-4" />
-                  Archive classroom
+                  {t("classroomSettings.archive")}
                 </FormSubmitButton>
               </form>
             ) : (
               <form action={reopenClassroom} className="mt-4">
                 <input name="classroomId" type="hidden" value={classroom.id} />
-                <FormSubmitButton className="w-full" pendingLabel="Reopening...">
-                  Reopen classroom
+                <FormSubmitButton
+                  className="w-full"
+                  pendingLabel={t("classroomSettings.reopening")}
+                >
+                  {t("classroomSettings.reopen")}
                 </FormSubmitButton>
               </form>
             )}

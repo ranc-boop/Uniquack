@@ -17,6 +17,9 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { formatNumber } from "@/lib/i18n/locale";
+import { translate } from "@/lib/i18n/messages";
+import { getRequestLocale } from "@/lib/i18n/server";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
 import { createClient } from "@/lib/supabase/server";
 import { loadTaxonomyCatalog } from "@/lib/tags/taxonomy-db";
@@ -92,7 +95,7 @@ function isMissingTaxonomyTableError(error: unknown) {
 }
 
 export default async function VideosPage({ searchParams }: VideosPageProps) {
-  const params = await searchParams;
+  const [params, locale] = await Promise.all([searchParams, getRequestLocale()]);
   const search = (params.q ?? "").trim().toLowerCase();
   const minDifficulty = parseDifficulty(params.min, 0);
   const maxDifficulty = parseDifficulty(params.max, 1000);
@@ -246,24 +249,23 @@ export default async function VideosPage({ searchParams }: VideosPageProps) {
   return (
     <div className="space-y-4">
       <div>
-        <h1 className="text-2xl font-semibold tracking-tight">Videos</h1>
+        <h1 className="text-2xl font-semibold tracking-tight">{translate(locale, "videos.title")}</h1>
         <p className="text-sm text-muted-foreground">
-          Published video explanations with their linked question, official
-          taxonomy tags, and difficulty.
+          {translate(locale, "videos.description")}
         </p>
       </div>
       <form className="grid gap-3 rounded-md border p-4 md:grid-cols-[1.5fr_1fr_1fr_auto]">
         <div className="space-y-2">
-          <Label htmlFor="q">Search</Label>
+          <Label htmlFor="q">{translate(locale, "common.search")}</Label>
           <Input
             id="q"
             name="q"
             defaultValue={params.q ?? ""}
-            placeholder="Video, provider, or question"
+            placeholder={translate(locale, "videos.searchPlaceholder")}
           />
         </div>
         <div className="space-y-2">
-          <Label htmlFor="min">Min difficulty</Label>
+          <Label htmlFor="min">{translate(locale, "library.minDifficulty")}</Label>
           <Input
             id="min"
             name="min"
@@ -274,7 +276,7 @@ export default async function VideosPage({ searchParams }: VideosPageProps) {
           />
         </div>
         <div className="space-y-2">
-          <Label htmlFor="max">Max difficulty</Label>
+          <Label htmlFor="max">{translate(locale, "library.maxDifficulty")}</Label>
           <Input
             id="max"
             name="max"
@@ -285,37 +287,34 @@ export default async function VideosPage({ searchParams }: VideosPageProps) {
           />
         </div>
         <div className="flex items-end gap-2">
-          <Button type="submit">Filter</Button>
+          <Button type="submit">{translate(locale, "library.filter")}</Button>
           <Button asChild type="button" variant="outline">
-            <Link href="/videos">Reset</Link>
+            <Link href="/videos">{translate(locale, "library.reset")}</Link>
           </Button>
         </div>
       </form>
       {error || questionsError ? (
         <p className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
-          {error?.message ??
-            questionsError?.message}
+          {translate(locale, "common.requestFailed")}
         </p>
       ) : null}
       {difficultyFiltered &&
       difficultyQuestionIds.length === VIDEO_QUESTION_PREFILTER_LIMIT ? (
         <p className="rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-900">
-          Video difficulty filtering is using the first{" "}
-          {VIDEO_QUESTION_PREFILTER_LIMIT} matching published questions. Narrow
-          the difficulty range if expected videos are missing.
+          {translate(locale, "videos.difficultyLimitWarning", { count: formatNumber(locale, VIDEO_QUESTION_PREFILTER_LIMIT) })}
         </p>
       ) : null}
       <div className="rounded-md border">
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead>Title</TableHead>
-              <TableHead>Question</TableHead>
-              <TableHead>Tags</TableHead>
-              <TableHead>Difficulty</TableHead>
-              <TableHead>Provider</TableHead>
-              <TableHead>Status</TableHead>
-              <TableHead>Open</TableHead>
+              <TableHead>{translate(locale, "videos.columnTitle")}</TableHead>
+              <TableHead>{translate(locale, "videos.columnQuestion")}</TableHead>
+              <TableHead>{translate(locale, "videos.columnTags")}</TableHead>
+              <TableHead>{translate(locale, "videos.columnDifficulty")}</TableHead>
+              <TableHead>{translate(locale, "videos.columnProvider")}</TableHead>
+              <TableHead>{translate(locale, "videos.columnStatus")}</TableHead>
+              <TableHead>{translate(locale, "common.open")}</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -326,7 +325,7 @@ export default async function VideosPage({ searchParams }: VideosPageProps) {
                     href={`/videos/${video.id}`}
                     className="font-medium hover:underline underline-offset-4"
                   >
-                    {video.title ?? "Untitled video"}
+                    {video.title ?? translate(locale, "videos.untitled")}
                   </Link>
                 </TableCell>
                 <TableCell>
@@ -354,13 +353,13 @@ export default async function VideosPage({ searchParams }: VideosPageProps) {
                   <div className="space-y-2">
                     <div className="space-y-1">
                       <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
-                        Official taxonomy tags
+                        {translate(locale, "videos.officialTags")}
                       </p>
                       <TaxonomyTagChips
                         assignments={taxonomyAssignmentsByQuestionId.get(
                           video.question_id,
                         )}
-                        emptyLabel="No taxonomy tags assigned yet."
+                        emptyLabel={translate(locale, "videos.noTags")}
                         showCategoryHeadings={false}
                         taxonomyCatalog={taxonomyCatalog}
                       />
@@ -368,15 +367,15 @@ export default async function VideosPage({ searchParams }: VideosPageProps) {
                   </div>
                 </TableCell>
                 <TableCell>
-                  {questionById.get(video.question_id)?.difficulty_rating ?? "-"}
+                  {questionById.get(video.question_id)?.difficulty_rating === undefined ? "-" : formatNumber(locale, questionById.get(video.question_id)?.difficulty_rating ?? 0)}
                 </TableCell>
-                <TableCell>{video.provider ?? "External"}</TableCell>
+                <TableCell>{video.provider ?? translate(locale, "videos.external")}</TableCell>
                 <TableCell>
                   <Badge variant="secondary">{video.status}</Badge>
                 </TableCell>
                 <TableCell>
                   <Button asChild size="sm" variant="outline">
-                    <Link href={`/videos/${video.id}`}>Open</Link>
+                    <Link href={`/videos/${video.id}`}>{translate(locale, "common.open")}</Link>
                   </Button>
                 </TableCell>
               </TableRow>
@@ -384,7 +383,7 @@ export default async function VideosPage({ searchParams }: VideosPageProps) {
             {!filteredVideos.length ? (
               <TableRow>
                 <TableCell colSpan={7} className="h-24 text-center">
-                  No published videos match these filters.
+                  {translate(locale, "videos.empty")}
                 </TableCell>
               </TableRow>
             ) : null}
@@ -393,9 +392,11 @@ export default async function VideosPage({ searchParams }: VideosPageProps) {
       </div>
       <div className="flex flex-wrap items-center justify-between gap-3 text-sm text-muted-foreground">
         <p>
-          Showing {filteredVideos.length ? from + 1 : 0}-
-          {from + filteredVideos.length} of {totalVideos ?? filteredVideos.length}{" "}
-          published videos.
+          {translate(locale, "videos.resultsSummary", {
+            from: formatNumber(locale, filteredVideos.length ? from + 1 : 0),
+            to: formatNumber(locale, from + filteredVideos.length),
+            total: formatNumber(locale, totalVideos ?? filteredVideos.length),
+          })}
         </p>
         <div className="flex items-center gap-2">
           <Button asChild size="sm" variant="outline" disabled={page <= 1}>
@@ -408,11 +409,14 @@ export default async function VideosPage({ searchParams }: VideosPageProps) {
                 search,
               })}
             >
-              Previous
+              {translate(locale, "library.previous")}
             </Link>
           </Button>
           <span>
-            Page {Math.min(page, totalPages)} of {totalPages}
+            {translate(locale, "library.pageOf", {
+              page: formatNumber(locale, Math.min(page, totalPages)),
+              total: formatNumber(locale, totalPages),
+            })}
           </span>
           <Button asChild size="sm" variant="outline" disabled={page >= totalPages}>
             <Link
@@ -424,7 +428,7 @@ export default async function VideosPage({ searchParams }: VideosPageProps) {
                 search,
               })}
             >
-              Next
+              {translate(locale, "library.next")}
             </Link>
           </Button>
         </div>

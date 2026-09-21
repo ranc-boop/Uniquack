@@ -11,6 +11,9 @@ import {
   QuestionBankSchemaMissingError,
 } from "@/lib/question-banks";
 import { createClient } from "@/lib/supabase/server";
+import { formatDate } from "@/lib/i18n/locale";
+import { getRequestLocale } from "@/lib/i18n/server";
+import { translate } from "@/lib/i18n/messages";
 
 import {
   BankBadge,
@@ -22,23 +25,20 @@ import {
 
 export const dynamic = "force-dynamic";
 
-function formatDate(value: string | null) {
-  return value ? new Date(value).toLocaleString() : "Unknown";
-}
-
-function SetupNeededState() {
+function SetupNeededState({ locale }: { locale: Parameters<typeof translate>[0] }) {
+  const t = (key: Parameters<typeof translate>[1], values?: Parameters<typeof translate>[2]) => translate(locale, key, values);
   return (
     <BankWorkbenchPage>
       <section className="rounded-lg border border-slate-200/80 bg-white/90 p-6 shadow-sm">
-        <p className="student-eyebrow">Setup needed</p>
+        <p className="student-eyebrow">{t("teacherLibrary.setupNeeded")}</p>
         <h1 className="mt-2 text-2xl font-bold text-slate-950">
-          Library source lineage is not available yet.
+          {t("teacherLibrary.sourceLineageUnavailable")}
         </h1>
         <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-600">
-          Apply clean migrations 0025 and 0027 before using Library source history.
+          {t("teacherLibrary.sourceLineageMigrationNotice")}
         </p>
         <Button asChild className="mt-5" variant="outline">
-          <Link href="/teacher/banks">Back to Libraries</Link>
+          <Link href="/teacher/banks">{t("teacherLibrary.backToLibraries")}</Link>
         </Button>
       </section>
     </BankWorkbenchPage>
@@ -50,6 +50,8 @@ export default async function TeacherBankSourcesPage({
 }: {
   params: Promise<{ bankId: string }>;
 }) {
+  const locale = await getRequestLocale();
+  const t = (key: Parameters<typeof translate>[1], values?: Parameters<typeof translate>[2]) => translate(locale, key, values);
   const profile = await requireTeacher();
   const { bankId } = await params;
   const supabase = await createClient();
@@ -65,7 +67,7 @@ export default async function TeacherBankSourcesPage({
     importBatches = await listBankImportBatches({ bankId, supabase });
   } catch (error) {
     if (error instanceof QuestionBankSchemaMissingError) {
-      return <SetupNeededState />;
+      return <SetupNeededState locale={locale} />;
     }
 
     throw error;
@@ -81,15 +83,15 @@ export default async function TeacherBankSourcesPage({
     <BankWorkbenchPage>
       <BankHeroPanel
         subtitle={bank.name}
-        title="Sources"
+        title={t("teacherLibrary.sources")}
       />
 
       <BankRouteTabs bankId={bank.id} currentUserRole={currentUserRole} />
 
       <section className="rounded-lg border border-slate-200/80 bg-white/85 shadow-[0_18px_48px_-40px_rgba(15,23,42,0.7)] ring-1 ring-slate-950/5 backdrop-blur">
         <BankSectionHeader
-          description="This list uses this Library's import batches only. It does not expose private files to students."
-          title="Recent source activity"
+          description={t("teacherLibrary.sourceActivityDescription")}
+          title={t("teacherLibrary.recentSourceActivity")}
         />
         <div className="divide-y divide-slate-100">
           {importBatches.length ? (
@@ -98,10 +100,10 @@ export default async function TeacherBankSourcesPage({
                 <div>
                   <p className="font-bold text-slate-950">{batch.source_type}</p>
                   <p className="mt-1 text-sm text-slate-600">
-                    {formatDate(batch.created_at)}
+                    {batch.created_at ? formatDate(locale, batch.created_at) : t("teacherLibrary.unknown")}
                   </p>
                   <p className="mt-1 break-all text-xs text-slate-500">
-                    Source batch reference {batch.id}
+                    {t("teacherLibrary.sourceBatchReference", { id: batch.id })}
                   </p>
                 </div>
                 <BankBadge>{batch.status}</BankBadge>
@@ -111,11 +113,10 @@ export default async function TeacherBankSourcesPage({
             <div className="p-8 text-center">
               <FileText aria-hidden="true" className="mx-auto h-10 w-10 text-sky-600" />
               <h2 className="mt-4 text-2xl font-bold text-slate-950">
-                No source activity yet.
+                {t("teacherLibrary.noSourceActivity")}
               </h2>
               <p className="mx-auto mt-2 max-w-2xl text-sm leading-6 text-slate-600">
-                Import private material into this Library to begin building source
-                lineage.
+                {t("teacherLibrary.noSourceActivityDescription")}
               </p>
             </div>
           )}

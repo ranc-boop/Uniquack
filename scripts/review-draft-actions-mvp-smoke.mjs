@@ -18,6 +18,10 @@ async function readDir(relativePath) {
   return readdir(resolve(root, relativePath));
 }
 
+function usesMessageKeys(source, ...keys) {
+  return keys.every((key) => source.includes(`"${key}"`));
+}
+
 function delegatesToSafeDraftSaver(source) {
   return source.includes("await saveBankReviewDraftQuestion(formData)");
 }
@@ -139,9 +143,14 @@ assert(
 
 assert(
   hasReviewDecisionControls(bankReviewPage) &&
-    bankReviewPage.includes("Approval confirms these questions for this Library") &&
-    bankReviewPage.includes("Content") &&
-    bankReviewPage.includes("you did not preview remains your responsibility") &&
+    usesMessageKeys(
+      bankReviewPage,
+      "teacherLibrary.approveCurrentPage",
+      "teacherLibrary.approvalResponsibility",
+      "teacherLibrary.blockedExcluded",
+      "teacherLibrary.needsFix",
+      "teacherLibrary.reject",
+    ) &&
     !bankReviewPage.includes("Edit draft - coming next") &&
     !bankReviewPage.includes("Needs fix - coming next") &&
     !bankReviewPage.includes("published_at"),

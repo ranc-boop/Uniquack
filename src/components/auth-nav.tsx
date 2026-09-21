@@ -5,14 +5,20 @@ import { signOut } from "@/app/auth/actions";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { getCurrentAuthContext } from "@/lib/auth/guards";
+import { translate } from "@/lib/i18n/messages";
+import { getRequestLocale } from "@/lib/i18n/server";
 
 export async function AuthNav() {
-  const authContext = await getCurrentAuthContext();
+  const [authContext, locale] = await Promise.all([
+    getCurrentAuthContext(),
+    getRequestLocale(),
+  ]);
+  const t = (key: Parameters<typeof translate>[1]) => translate(locale, key);
 
   if (!authContext) {
     return (
       <Button asChild className="min-h-11" variant="outline" size="sm">
-        <Link href="/auth/login">Sign in</Link>
+        <Link href="/auth/login">{t("auth.signIn")}</Link>
       </Button>
     );
   }
@@ -44,7 +50,7 @@ export async function AuthNav() {
         </div>
         <form action={signOut} className="pt-3">
           <Button className="min-h-11 w-full" type="submit" variant="outline" size="sm">
-            Sign out
+            {t("auth.signOut")}
           </Button>
         </form>
       </div>

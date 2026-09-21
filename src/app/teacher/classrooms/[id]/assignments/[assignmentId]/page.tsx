@@ -23,6 +23,9 @@ import {
   getTeacherAssignmentDetail,
 } from "@/lib/teacher-assignments";
 import { listTeacherAssignmentFeedbackNotes } from "@/lib/teacher-feedback-notes";
+import { formatDateTime as formatLocaleDateTime, formatNumber } from "@/lib/i18n/locale";
+import { getRequestLocale } from "@/lib/i18n/server";
+import { translate } from "@/lib/i18n/messages";
 
 export const dynamic = "force-dynamic";
 
@@ -33,25 +36,6 @@ type TeacherAssignmentDetailPageProps = {
     saved?: string;
   }>;
 };
-
-function formatDateTime(value: string | null | undefined) {
-  if (!value) return "Not set";
-  return new Intl.DateTimeFormat("en", {
-    dateStyle: "medium",
-    timeStyle: "short",
-  }).format(new Date(value));
-}
-
-function statusLabel(status: string) {
-  return status.replace(/_/g, " ");
-}
-
-function sourceKindLabel(kind: string) {
-  if (kind === "course_builder_run") return "Course Builder run";
-  if (kind === "practice_framework") return "Practice framework";
-  if (kind === "question_bank") return "Library";
-  return "Manual";
-}
 
 function statusBadgeClass(status: string) {
   if (status === "completed") {
@@ -69,18 +53,19 @@ function statusBadgeClass(status: string) {
   return "bg-amber-50 text-amber-700 ring-amber-200";
 }
 
-function formatPercent(value: number | null) {
-  return value === null ? "Not set" : `${value}%`;
+function formatPercent(value: number | null, locale: Parameters<typeof translate>[0], t: (key: Parameters<typeof translate>[1]) => string) {
+  return value === null ? t("assignmentDetail.notSet") : `${formatNumber(locale, value)}%`;
 }
 
 function attentionLabel(
   status: "mixed_results" | "needs_attention" | "no_attempts" | "on_track" | "unavailable",
+  t: (key: Parameters<typeof translate>[1]) => string,
 ) {
-  if (status === "needs_attention") return "Needs attention";
-  if (status === "mixed_results") return "Mixed results";
-  if (status === "no_attempts") return "No attempts yet";
-  if (status === "unavailable") return "Question unavailable";
-  return "On track";
+  if (status === "needs_attention") return t("assignmentDetail.needsAttention");
+  if (status === "mixed_results") return t("assignmentDetail.mixedResults");
+  if (status === "no_attempts") return t("assignmentDetail.noAttempts");
+  if (status === "unavailable") return t("assignmentDetail.questionUnavailable");
+  return t("assignmentDetail.onTrack");
 }
 
 function attentionBadgeClass(
@@ -98,11 +83,11 @@ function attentionBadgeClass(
   return "bg-slate-100 text-slate-700 ring-slate-200";
 }
 
-function attemptResultLabel(isCorrect: boolean | null, score: number | null) {
-  if (isCorrect === true) return "Correct";
-  if (isCorrect === false) return "Needs review";
-  if (score !== null) return `Score ${score}`;
-  return "Recorded";
+function attemptResultLabel(isCorrect: boolean | null, score: number | null, locale: Parameters<typeof translate>[0], t: (key: Parameters<typeof translate>[1], values?: Parameters<typeof translate>[2]) => string) {
+  if (isCorrect === true) return t("assignmentDetail.correct");
+  if (isCorrect === false) return t("assignmentDetail.needsReview");
+  if (score !== null) return t("assignmentDetail.score", { score: formatNumber(locale, score) });
+  return t("assignmentDetail.recorded");
 }
 
 function ProgressStat({
@@ -130,6 +115,20 @@ export default async function TeacherAssignmentDetailPage({
   searchParams,
 }: TeacherAssignmentDetailPageProps) {
   await requireTeacher();
+  const locale = await getRequestLocale();
+  const t = (key: Parameters<typeof translate>[1], values?: Parameters<typeof translate>[2]) => translate(locale, key, values);
+  const formatDateTime = (value: string | null | undefined) => value ? formatLocaleDateTime(locale, value) : t("assignmentDetail.notSet");
+  const statusLabel = (status: string) => ({ completed: t("assignmentDetail.completed"), in_progress: t("assignmentDetail.inProgress"), assigned: t("assignmentDetail.assigned"), draft: t("assignmentDetail.draft"), not_started: t("assignmentDetail.notStarted") } as Record<string, string>)[status] ?? status;
+  const sourceKindLabel = (kind: string) => ({ course_builder_run: t("assignmentDetail.courseBuilderRun"), practice_framework: t("assignmentDetail.practiceFramework"), question_bank: t("assignmentDetail.library"), manual: t("assignmentDetail.manual") } as Record<string, string>)[kind] ?? kind;
+  const questionTypeLabel = (questionType: string | null | undefined) =>
+    ({
+      fill_blank: t("courseBuilder.questionTypeFillBlank"),
+      frq: t("courseBuilder.questionTypeFrq"),
+      mcq: t("courseBuilder.questionTypeMcq"),
+      mixed: t("courseBuilder.questionTypeMixed"),
+    } as Record<string, string>)[questionType ?? ""] ?? questionType ?? "";
+  const itemTypeLabel = (itemType: string) =>
+    itemType === "question" ? t("assignmentDetail.questionItem") : itemType;
   const { assignmentId, id } = await params;
   const query = await searchParams;
   const supabase = await createClient();
@@ -169,33 +168,34 @@ export default async function TeacherAssignmentDetailPage({
       <section className="teacher-hero">
         <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
           <div className="space-y-2">
-            <p className="teacher-eyebrow">Assignment detail</p>
+            <p className="teacher-eyebrow">{t("assignmentDetail.detailEyebrow")}</p>
             <h1 className="text-3xl font-bold tracking-tight text-slate-950">
               {assignment.title}
             </h1>
             <p className="max-w-2xl text-base leading-7 text-slate-600">
-              Delivery detail for {assignment.classroom.name}
-              {assignment.classroom.subject ? ` - ${assignment.classroom.subject}` : ""}
+              {t("assignmentDetail.deliveryDetailFor", {
+                classroom: `${assignment.classroom.name}${assignment.classroom.subject ? ` - ${assignment.classroom.subject}` : ""}`,
+              })}
             </p>
           </div>
           <div className="flex flex-wrap gap-2">
             <Button asChild variant="outline">
-              <Link href="/teacher">Teacher Studio</Link>
+                <Link href="/teacher">{t("assignmentDetail.teacherStudio")}</Link>
             </Button>
             <Button asChild variant="outline">
               <Link href={`/teacher/classrooms/${assignment.classroom.id}/assignments`}>
-                Back to assignments
+                {t("assignmentDetail.backToAssignments")}
               </Link>
             </Button>
             <FocusTaskLink
               className="inline-flex min-h-11 items-center gap-2 rounded-md border border-input bg-background px-4 py-2 text-sm font-medium shadow-sm hover:bg-accent hover:text-accent-foreground"
               href={`/teacher/classrooms/${assignment.classroom.id}/assignments/${assignment.id}/student-preview`}
-              newTabLabel="Open student preview in new tab"
+              newTabLabel={t("assignmentDetail.openStudentPreview")}
               returnTo={`/teacher/classrooms/${assignment.classroom.id}/assignments/${assignment.id}`}
               taskKind="student-preview"
               triggerId="assignment-student-preview"
             >
-              Preview as student
+              {t("assignmentDetail.previewAsStudent")}
             </FocusTaskLink>
           </div>
         </div>
@@ -208,30 +208,32 @@ export default async function TeacherAssignmentDetailPage({
         className="teacher-panel overflow-hidden"
       >
         <div className="border-b border-slate-100 p-5">
-          <p className="teacher-eyebrow">Assignment evidence</p>
+          <p className="teacher-eyebrow">{t("assignmentDetail.evidenceEyebrow")}</p>
           <h2 className="mt-1 text-lg font-bold text-slate-950" id="assignment-evidence-heading">
-            Evidence for this assignment only
+            {t("assignmentDetail.evidenceHeading")}
           </h2>
           <p className="mt-1 text-sm leading-6 text-slate-600">
-            Review student attempts from linked assignment Practice sessions. Private student
-            self-study is not included.
+            {t("assignmentDetail.evidenceDescription")}
           </p>
         </div>
         <div className="grid gap-px bg-slate-100 sm:grid-cols-3">
           <ProgressStat
-            helper="Students marked completed"
-            label="Completion rate"
-            value={formatPercent(assignment.evidenceSummary.completionRate)}
+            helper={t("assignmentDetail.studentsCompleted")}
+            label={t("assignmentDetail.completionRate")}
+            value={formatPercent(assignment.evidenceSummary.completionRate, locale, t)}
           />
           <ProgressStat
-            helper={`${assignment.evidenceSummary.correctAttemptCount} correct, ${assignment.evidenceSummary.incorrectAttemptCount} missed`}
-            label="Attempts"
-            value={assignment.evidenceSummary.attemptCount}
+            helper={t("assignmentDetail.correctMissed", {
+              correct: formatNumber(locale, assignment.evidenceSummary.correctAttemptCount),
+              incorrect: formatNumber(locale, assignment.evidenceSummary.incorrectAttemptCount),
+            })}
+            label={t("assignmentDetail.attempts")}
+            value={formatNumber(locale, assignment.evidenceSummary.attemptCount)}
           />
           <ProgressStat
-            helper="Two or more attempts with more misses than correct"
-            label="Students needing attention"
-            value={assignment.evidenceSummary.studentsNeedingAttentionCount}
+            helper={t("assignmentDetail.twoOrMoreAttempts")}
+            label={t("assignmentDetail.studentsNeedingAttention")}
+            value={formatNumber(locale, assignment.evidenceSummary.studentsNeedingAttentionCount)}
           />
         </div>
       </section>
@@ -241,7 +243,7 @@ export default async function TeacherAssignmentDetailPage({
           className="rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-medium text-emerald-800"
           role="status"
         >
-          {query.saved}
+          {t("assignmentDetail.actionSaved")}
         </p>
       ) : null}
       {query.error ? (
@@ -249,29 +251,31 @@ export default async function TeacherAssignmentDetailPage({
           className="rounded-lg border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm font-medium text-destructive"
           role="alert"
         >
-          {query.error}
+          {t("assignmentDetail.actionFailed")}
         </p>
       ) : null}
 
       {deliveryQuarantine ? (
         <section className="rounded-lg border border-amber-300 bg-amber-50 p-5">
           <h2 className="text-base font-bold text-amber-950">
-            Delivery paused by Library Review
+            {t("assignmentDetail.deliveryPausedByReview")}
           </h2>
           <p className="mt-2 text-sm leading-6 text-amber-900">
-            Students cannot open this Assignment while {affectedItems.length || "one or more"} Library
-            item{affectedItems.length === 1 ? "" : "s"} still need review. Existing
-            student progress and Assignment history are preserved.
+            {t("assignmentDetail.quarantineDescription", {
+              count: formatNumber(locale, affectedItems.length || 1),
+              s: affectedItems.length === 1 ? "" : "s",
+            })}
           </p>
           <p className="mt-2 text-xs text-amber-800">
-            Paused {formatDateTime(deliveryQuarantine.quarantinedAt)}. Review the
-            affected questions, then resume this same Assignment.
+            {t("assignmentDetail.pausedAtReview", {
+              date: formatDateTime(deliveryQuarantine.quarantinedAt),
+            })}
           </p>
           <div className="mt-4 flex flex-wrap gap-2">
             {sourceBankId ? (
               <Button asChild variant="outline">
                 <Link href={`/teacher/banks/${sourceBankId}/review`}>
-                  Open Library Review
+                  {t("assignmentDetail.openLibraryReview")}
                 </Link>
               </Button>
             ) : null}
@@ -284,9 +288,9 @@ export default async function TeacherAssignmentDetailPage({
               />
               <FormSubmitButton
                 disabled={affectedItems.length > 0}
-                pendingLabel="Resuming delivery..."
+                pendingLabel={t("assignmentDetail.resumingDelivery")}
               >
-                Resume delivery
+                {t("assignmentDetail.resumeDelivery")}
               </FormSubmitButton>
             </form>
             <Button asChild variant="outline">
@@ -295,7 +299,7 @@ export default async function TeacherAssignmentDetailPage({
                   sourceBankId ? `&sourceBankId=${sourceBankId}` : ""
                 }`}
               >
-                Create replacement Assignment
+                {t("assignmentDetail.createReplacementAssignment")}
               </Link>
             </Button>
           </div>
@@ -303,7 +307,7 @@ export default async function TeacherAssignmentDetailPage({
             <ul className="mt-4 list-disc space-y-1 pl-5 text-sm text-amber-900">
               {affectedItems.map((item) => (
                 <li key={item.id}>
-                  {item.question?.title || "Unavailable Library question"} —{" "}
+                  {item.question?.title || t("assignmentDetail.unavailableLibraryQuestion")} —{" "}
                   {item.readinessIssues.join("; ")}
                 </li>
               ))}
@@ -311,30 +315,26 @@ export default async function TeacherAssignmentDetailPage({
           ) : null}
           {affectedItems.length ? (
             <p className="mt-3 text-xs leading-5 text-amber-800">
-              Resume unlocks only after every listed issue is cleared. Use
-              Library Review for draft content; use a replacement Assignment
-              when a Library link cannot be repaired.
+              {t("assignmentDetail.resumeOnlyAfterIssues")} {t("assignmentDetail.useLibraryReview")}; {t("assignmentDetail.replacementWhenCannotRepair")}
             </p>
           ) : null}
         </section>
       ) : assignment.status === "draft" ? (
         <section className="rounded-lg border border-amber-200 bg-amber-50 p-5">
           <h2 className="text-base font-bold text-amber-950">
-            Draft assignment is teacher-only.
+            {t("assignmentDetail.draftTeacherOnly")}
           </h2>
           <p className="mt-2 text-sm leading-6 text-amber-900">
-            Students will not see this assignment in My Work until it is assigned.
-            Progress rows are shown for roster planning only.
+            {t("assignmentDetail.draftDescription")}
           </p>
         </section>
       ) : (
         <section className="rounded-lg border border-blue-200 bg-blue-50 p-5">
           <h2 className="text-base font-bold text-blue-950">
-            Assigned work is visible in Student My Work.
+            {t("assignmentDetail.assignedVisible")}
           </h2>
           <p className="mt-2 text-sm leading-6 text-blue-900">
-            Active class members can open this assignment, start Practice, and
-            send progress evidence back to this page.
+            {t("assignmentDetail.assignedDescription")}
           </p>
         </section>
       )}
@@ -344,28 +344,25 @@ export default async function TeacherAssignmentDetailPage({
           <section className="teacher-panel overflow-hidden">
             <div className="border-b border-slate-100 p-5">
               <h2 className="text-lg font-bold text-slate-950">
-                Student progress
+                {t("assignmentDetail.studentProgress")}
               </h2>
               <p className="teacher-muted">
-                One row per active classroom student. Attempts and results are limited to
-                Practice sessions linked to this assignment.
+                {t("assignmentDetail.studentProgressDescription")}
               </p>
             </div>
 
             {assignment.progressSummary.studentCount === 0 ? (
               <div className="p-8 text-center">
                 <h3 className="text-base font-bold text-slate-950">
-                  No active students yet.
+                  {t("assignmentDetail.noActiveStudents")}
                 </h3>
                 <p className="mx-auto mt-2 max-w-md text-sm leading-6 text-slate-600">
-                  Add students to the classroom before expecting assignment
-                  progress.
+                  {t("assignmentDetail.addStudentsForProgress")}
                 </p>
               </div>
             ) : assignment.progressSummary.linkedPracticeSessionCount === 0 ? (
               <div className="border-b border-slate-100 bg-slate-50 p-4 text-sm text-slate-600">
-                Students are on the roster, but no linked Practice evidence has
-                been created for this assignment yet.
+                {t("assignmentDetail.noLinkedPracticeEvidence")}
               </div>
             ) : null}
 
@@ -374,17 +371,16 @@ export default async function TeacherAssignmentDetailPage({
               <div className="hidden overflow-x-auto lg:block">
                 <table className="min-w-full divide-y divide-slate-100 text-sm">
                   <caption className="sr-only">
-                    Students ordered by attention need, with Assignment-linked
-                    Practice evidence only.
+                    {t("assignmentDetail.studentsOrderedByAttention")}
                   </caption>
                   <thead className="bg-slate-50 text-left text-xs font-bold uppercase tracking-[0.12em] text-slate-500">
                     <tr>
-                      <th className="px-5 py-3" scope="col">Student</th>
-                      <th className="px-5 py-3" scope="col">Status</th>
-                      <th className="px-5 py-3" scope="col">Attempts</th>
-                      <th className="px-5 py-3" scope="col">Correct / total</th>
-                      <th className="px-5 py-3" scope="col">Latest activity</th>
-                      <th className="px-5 py-3" scope="col"><span className="sr-only">View evidence</span></th>
+                      <th className="px-5 py-3" scope="col">{t("assignmentDetail.student")}</th>
+                      <th className="px-5 py-3" scope="col">{t("assignmentDetail.status")}</th>
+                      <th className="px-5 py-3" scope="col">{t("assignmentDetail.attempts")}</th>
+                      <th className="px-5 py-3" scope="col">{t("assignmentDetail.correctTotal")}</th>
+                      <th className="px-5 py-3" scope="col">{t("assignmentDetail.latestActivity")}</th>
+                      <th className="px-5 py-3" scope="col"><span className="sr-only">{t("assignmentDetail.viewEvidence")}</span></th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
@@ -408,18 +404,18 @@ export default async function TeacherAssignmentDetailPage({
                           </span>
                         </td>
                         <td className="px-5 py-4 text-slate-700">
-                          <p className="font-semibold">{row.practiceAttemptCount}</p>
+                            <p className="font-semibold">{formatNumber(locale, row.practiceAttemptCount)}</p>
                           <p className="mt-1 text-xs text-slate-500">
-                            {row.practiceHintCount} hint{row.practiceHintCount === 1 ? "" : "s"} used
+                            {t("assignmentDetail.hintsUsed", { count: formatNumber(locale, row.practiceHintCount), s: row.practiceHintCount === 1 ? "" : "s" })}
                           </p>
                         </td>
                         <td className="px-5 py-4 text-slate-700">
                           <p className="font-semibold">
-                            {row.practiceCorrectCount} / {row.practiceAttemptCount}
+                            {formatNumber(locale, row.practiceCorrectCount)} / {formatNumber(locale, row.practiceAttemptCount)}
                           </p>
                           {row.practiceIncorrectCount ? (
                             <p className="mt-1 text-xs text-rose-700">
-                              {row.practiceIncorrectCount} missed
+                              {t("assignmentDetail.missed", { count: formatNumber(locale, row.practiceIncorrectCount) })}
                             </p>
                           ) : null}
                         </td>
@@ -428,18 +424,18 @@ export default async function TeacherAssignmentDetailPage({
                             {formatDateTime(row.latestPracticeSessionAt)}
                           </p>
                           <p className="mt-1 text-xs text-slate-500">
-                            {row.linkedPracticeSessionCount} linked session{row.linkedPracticeSessionCount === 1 ? "" : "s"}
+                            {t("assignmentDetail.linkedSessions", { count: formatNumber(locale, row.linkedPracticeSessionCount), s: row.linkedPracticeSessionCount === 1 ? "" : "s" })}
                           </p>
                         </td>
                         <td className="px-5 py-4 text-right">
                           {row.recentAttempts.length ? (
-                            <EvidenceDisclosureLink
+                              <EvidenceDisclosureLink
                               targetId={`student-evidence-${row.studentId}`}
                             >
-                              View evidence
+                              {t("assignmentDetail.viewEvidence")}
                             </EvidenceDisclosureLink>
                           ) : (
-                            <span className="text-xs text-slate-400">Pending</span>
+                            <span className="text-xs text-slate-400">{t("assignmentDetail.pending")}</span>
                           )}
                         </td>
                       </tr>
@@ -470,23 +466,23 @@ export default async function TeacherAssignmentDetailPage({
                     <dl className="grid grid-cols-2 gap-3 text-sm">
                       <div className="rounded-lg bg-slate-50 p-3">
                         <dt className="text-xs font-semibold text-slate-500">
-                          Attempts
+                          {t("assignmentDetail.attempts")}
                         </dt>
                         <dd className="mt-1 font-bold text-slate-950">
-                          {row.practiceAttemptCount}
+                          {formatNumber(locale, row.practiceAttemptCount)}
                         </dd>
                       </div>
                       <div className="rounded-lg bg-slate-50 p-3">
                         <dt className="text-xs font-semibold text-slate-500">
-                          Correct
+                          {t("assignmentDetail.correct")}
                         </dt>
                         <dd className="mt-1 font-bold text-slate-950">
-                          {row.practiceCorrectCount} / {row.practiceAttemptCount}
+                          {formatNumber(locale, row.practiceCorrectCount)} / {formatNumber(locale, row.practiceAttemptCount)}
                         </dd>
                       </div>
                       <div className="col-span-2 rounded-lg bg-slate-50 p-3">
                         <dt className="text-xs font-semibold text-slate-500">
-                          Latest activity
+                          {t("assignmentDetail.latestActivity")}
                         </dt>
                         <dd className="mt-1 font-medium text-slate-800">
                           {formatDateTime(row.latestPracticeSessionAt)}
@@ -497,11 +493,11 @@ export default async function TeacherAssignmentDetailPage({
                       <EvidenceDisclosureLink
                         targetId={`student-evidence-${row.studentId}`}
                       >
-                        View evidence
+                        {t("assignmentDetail.viewEvidence")}
                       </EvidenceDisclosureLink>
                     ) : (
                       <p className="text-xs text-slate-500">
-                        Evidence pending
+                        {t("assignmentDetail.evidencePending")}
                       </p>
                     )}
                   </article>
@@ -514,26 +510,26 @@ export default async function TeacherAssignmentDetailPage({
           <details className="teacher-panel overflow-hidden">
             <summary className="teacher-focus-ring min-h-11 cursor-pointer list-none p-5">
               <span className="block text-lg font-bold text-slate-950">
-                Question performance
+                {t("assignmentDetail.questionPerformance")}
               </span>
               <span className="mt-1 block text-sm leading-6 text-slate-600">
-                Optional evidence by assigned question.
+                {t("assignmentDetail.optionalEvidenceByQuestion")}
               </span>
             </summary>
             {assignment.questionPerformanceRows.length ? (
               <div className="overflow-x-auto border-t border-slate-100">
                 <table
-                  aria-label="Assignment question performance"
+                  aria-label={t("assignmentDetail.questionPerformanceLabel")}
                   className="min-w-full divide-y divide-slate-100 text-sm"
                 >
                   <thead className="bg-slate-50 text-left text-xs font-bold uppercase tracking-[0.12em] text-slate-500">
                     <tr>
-                      <th className="px-5 py-3" scope="col">Question</th>
-                      <th className="px-5 py-3" scope="col">Type / difficulty</th>
-                      <th className="px-5 py-3" scope="col">Attempted</th>
-                      <th className="px-5 py-3" scope="col">Correct</th>
-                      <th className="px-5 py-3" scope="col">Missed</th>
-                      <th className="px-5 py-3" scope="col">Attention signal</th>
+                      <th className="px-5 py-3" scope="col">{t("assignmentDetail.question")}</th>
+                      <th className="px-5 py-3" scope="col">{t("assignmentDetail.typeDifficulty")}</th>
+                      <th className="px-5 py-3" scope="col">{t("assignmentDetail.attempted")}</th>
+                      <th className="px-5 py-3" scope="col">{t("assignmentDetail.correct")}</th>
+                      <th className="px-5 py-3" scope="col">{t("assignmentDetail.missedCount")}</th>
+                      <th className="px-5 py-3" scope="col">{t("assignmentDetail.attentionSignal")}</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
@@ -541,7 +537,7 @@ export default async function TeacherAssignmentDetailPage({
                       <tr className="align-top" key={row.assignmentItemId}>
                         <td className="min-w-[18rem] px-5 py-4">
                           <p className="font-semibold text-slate-950">
-                            {row.question?.title || "Question unavailable"}
+                            {row.question?.title || t("assignmentDetail.questionUnavailable")}
                           </p>
                           {row.question?.content_html ? (
                             <QuestionText
@@ -556,23 +552,25 @@ export default async function TeacherAssignmentDetailPage({
                         <td className="px-5 py-4 text-slate-700">
                           {row.question ? (
                             <>
-                              <p className="font-medium">{row.question.question_type}</p>
+                              <p className="font-medium">
+                                {questionTypeLabel(row.question.question_type)}
+                              </p>
                               <p className="mt-1 text-xs text-slate-500">
-                                Difficulty {row.question.difficulty_rating}
+                                {t("assignmentDetail.difficulty", { value: formatNumber(locale, row.question.difficulty_rating) })}
                               </p>
                             </>
                           ) : (
-                            <span className="text-slate-500">Not available</span>
+                            <span className="text-slate-500">{t("assignmentDetail.notAvailable")}</span>
                           )}
                         </td>
                         <td className="px-5 py-4 font-semibold text-slate-700">
-                          {row.studentAttemptedCount} / {row.assignedStudentCount}
+                          {formatNumber(locale, row.studentAttemptedCount)} / {formatNumber(locale, row.assignedStudentCount)}
                         </td>
                         <td className="px-5 py-4 font-semibold text-emerald-700">
-                          {row.correctAttemptCount}
+                          {formatNumber(locale, row.correctAttemptCount)}
                         </td>
                         <td className="px-5 py-4 font-semibold text-rose-700">
-                          {row.incorrectAttemptCount}
+                          {formatNumber(locale, row.incorrectAttemptCount)}
                         </td>
                         <td className="px-5 py-4">
                           <span
@@ -580,7 +578,7 @@ export default async function TeacherAssignmentDetailPage({
                               row.attentionStatus,
                             )}`}
                           >
-                            {attentionLabel(row.attentionStatus)}
+                            {attentionLabel(row.attentionStatus, t)}
                           </span>
                           {row.latestActivityAt ? (
                             <p className="mt-2 text-xs text-slate-500">
@@ -595,9 +593,9 @@ export default async function TeacherAssignmentDetailPage({
               </div>
             ) : (
               <div className="p-8 text-center">
-                <h3 className="text-base font-bold text-slate-950">No selected questions yet.</h3>
+                <h3 className="text-base font-bold text-slate-950">{t("assignmentDetail.noSelectedQuestions")}</h3>
                 <p className="mx-auto mt-2 max-w-md text-sm leading-6 text-slate-600">
-                  Add selected bank or published questions before assigning work to students.
+                  {t("assignmentDetail.addQuestionsBeforeAssigning")}
                 </p>
               </div>
             )}
@@ -606,10 +604,10 @@ export default async function TeacherAssignmentDetailPage({
           <details className="teacher-panel overflow-hidden">
             <summary className="teacher-focus-ring min-h-11 cursor-pointer list-none p-5">
               <span className="block text-lg font-bold text-slate-950">
-                Attempt drilldown
+                {t("assignmentDetail.attemptDrilldown")}
               </span>
               <span className="mt-1 block text-sm leading-6 text-slate-600">
-                Optional recent assignment-linked evidence.
+                {t("assignmentDetail.optionalRecentEvidence")}
               </span>
             </summary>
             {assignment.studentProgressRows.some((row) => row.recentAttempts.length) ? (
@@ -627,11 +625,11 @@ export default async function TeacherAssignmentDetailPage({
                         <span>
                           <span className="block font-semibold text-slate-950">{row.displayName}</span>
                           <span className="mt-1 block text-sm text-slate-600">
-                            {row.practiceAttemptCount} attempt{row.practiceAttemptCount === 1 ? "" : "s"}, {row.practiceCorrectCount} correct, {row.practiceHintCount} hint{row.practiceHintCount === 1 ? "" : "s"}
+                            {t("assignmentDetail.attemptSummary", { attempts: formatNumber(locale, row.practiceAttemptCount), s: row.practiceAttemptCount === 1 ? "" : "s", correct: formatNumber(locale, row.practiceCorrectCount), hints: formatNumber(locale, row.practiceHintCount), hintsSuffix: row.practiceHintCount === 1 ? "" : "s" })}
                           </span>
                         </span>
                         <span className="rounded-md border border-slate-200 px-3 py-2 text-xs font-bold text-slate-700 group-open:bg-slate-50">
-                          View recent attempts
+                          {t("assignmentDetail.viewRecentAttempts")}
                         </span>
                       </summary>
                       <div className="mt-5 space-y-3 border-t border-slate-100 pt-5">
@@ -641,7 +639,7 @@ export default async function TeacherAssignmentDetailPage({
                               <div className="min-w-0">
                                 <p className="font-semibold text-slate-950">{attempt.questionTitle}</p>
                                 <p className="mt-1 text-xs text-slate-500">
-                                  {formatDateTime(attempt.createdAt)} - {attempt.gradingMode} grading - {attempt.hintCount} hint{attempt.hintCount === 1 ? "" : "s"}
+                                   {formatDateTime(attempt.createdAt)} - {t("assignmentDetail.gradingMode", { mode: attempt.gradingMode })} - {t("assignmentDetail.hintsUsed", { count: formatNumber(locale, attempt.hintCount), s: attempt.hintCount === 1 ? "" : "s" })}
                                 </p>
                               </div>
                               <span
@@ -649,18 +647,18 @@ export default async function TeacherAssignmentDetailPage({
                                   attempt.isCorrect === true ? "completed" : attempt.isCorrect === false ? "draft" : "assigned",
                                 )}`}
                               >
-                                {attemptResultLabel(attempt.isCorrect, attempt.score)}
+                                {attemptResultLabel(attempt.isCorrect, attempt.score, locale, t)}
                               </span>
                             </div>
                             <div className="mt-4 grid gap-3 lg:grid-cols-2">
                               <div className="rounded-md border border-slate-200 bg-white p-3">
-                                <p className="text-xs font-bold uppercase tracking-[0.12em] text-slate-500">Student answer</p>
+                                 <p className="text-xs font-bold uppercase tracking-[0.12em] text-slate-500">{t("assignmentDetail.studentAnswer")}</p>
                                 <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-slate-800">{attempt.answerPreview}</p>
                               </div>
                               <div className="rounded-md border border-slate-200 bg-white p-3">
-                                <p className="text-xs font-bold uppercase tracking-[0.12em] text-slate-500">System review</p>
+                                 <p className="text-xs font-bold uppercase tracking-[0.12em] text-slate-500">{t("assignmentDetail.systemReview")}</p>
                                 <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-slate-800">
-                                  {attempt.feedbackSummary || "No written review result was recorded for this attempt."}
+                                   {attempt.feedbackSummary || t("assignmentDetail.noWrittenReview")}
                                 </p>
                               </div>
                             </div>
@@ -672,10 +670,9 @@ export default async function TeacherAssignmentDetailPage({
               </div>
             ) : (
               <div className="p-8 text-center">
-                <h3 className="text-base font-bold text-slate-950">Evidence is still pending.</h3>
+                <h3 className="text-base font-bold text-slate-950">{t("assignmentDetail.evidenceStillPending")}</h3>
                 <p className="mx-auto mt-2 max-w-md text-sm leading-6 text-slate-600">
-                  When a student answers an assigned question in Practice, their recent attempt
-                  will appear here for this assignment only.
+                  {t("assignmentDetail.practiceEvidenceAppearsHere")}
                 </p>
               </div>
             )}
@@ -683,11 +680,10 @@ export default async function TeacherAssignmentDetailPage({
 
           <section className="teacher-panel overflow-hidden">
             <div className="border-b border-slate-100 p-5">
-              <p className="teacher-eyebrow">Teacher feedback notes</p>
-              <h2 className="mt-1 text-lg font-bold text-slate-950">Respond to assignment evidence</h2>
+            <p className="teacher-eyebrow">{t("assignmentDetail.teacherFeedbackNotes")}</p>
+            <h2 className="mt-1 text-lg font-bold text-slate-950">{t("assignmentDetail.respondToAssignmentEvidence")}</h2>
               <p className="mt-1 text-sm leading-6 text-slate-600">
-                Save a private teacher note or explicitly send feedback to one student. Sent
-                feedback appears only in that student&apos;s assigned work.
+                {t("assignmentDetail.feedbackDescription")}
               </p>
             </div>
 
@@ -702,12 +698,12 @@ export default async function TeacherAssignmentDetailPage({
                       <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                         <div className="min-w-0">
                           <p className="font-semibold text-slate-950">
-                            {student?.displayName || "Assignment note"}
+                            {student?.displayName || t("assignmentDetail.assignmentNote")}
                           </p>
                           <p className="mt-1 text-xs text-slate-500">
                             {sent
-                              ? `Sent ${formatDateTime(note.sent_at)}`
-                              : `Private note updated ${formatDateTime(note.updated_at)}`}
+                              ? t("assignmentDetail.sentAt", { date: formatDateTime(note.sent_at) })
+                              : t("assignmentDetail.privateNoteUpdated", { date: formatDateTime(note.updated_at) })}
                           </p>
                         </div>
                         <span
@@ -717,7 +713,7 @@ export default async function TeacherAssignmentDetailPage({
                               : "bg-slate-100 text-slate-700 ring-slate-200"
                           }`}
                         >
-                          {sent ? "Sent to student" : "Private teacher note"}
+                          {sent ? t("assignmentDetail.sentToStudent") : t("assignmentDetail.privateTeacherNote")}
                         </span>
                       </div>
                       <p className="mt-3 whitespace-pre-wrap text-sm leading-6 text-slate-700">
@@ -729,8 +725,7 @@ export default async function TeacherAssignmentDetailPage({
               </div>
             ) : (
               <div className="border-b border-slate-100 bg-slate-50 p-4 text-sm leading-6 text-slate-600">
-                No feedback notes yet. Start with a private observation or send a focused next step
-                to a student.
+                {t("assignmentDetail.noFeedbackNotes")}
               </div>
             )}
 
@@ -741,16 +736,19 @@ export default async function TeacherAssignmentDetailPage({
                     <summary className="flex cursor-pointer list-none flex-wrap items-center justify-between gap-3">
                       <span>
                         <span className="block font-semibold text-slate-950">
-                          Write feedback for {row.displayName}
+                          {t("assignmentDetail.writeFeedbackFor", { name: row.displayName })}
                         </span>
                         <span className="mt-1 block text-sm text-slate-600">
                           {row.practiceAttemptCount
-                            ? `${row.practiceCorrectCount}/${row.practiceAttemptCount} correct in assignment-linked Practice`
-                            : "No assignment Practice attempt yet"}
+                            ? t("assignmentDetail.correctInAssignmentPractice", {
+                                attempts: formatNumber(locale, row.practiceAttemptCount),
+                                correct: formatNumber(locale, row.practiceCorrectCount),
+                              })
+                            : t("assignmentDetail.noAssignmentPracticeAttempt")}
                         </span>
                       </span>
                       <span className="rounded-md border border-slate-200 px-3 py-2 text-xs font-bold text-slate-700 group-open:bg-slate-50">
-                        Add note
+                        {t("assignmentDetail.addNote")}
                       </span>
                     </summary>
 
@@ -764,43 +762,43 @@ export default async function TeacherAssignmentDetailPage({
                       />
                       <input name="studentId" type="hidden" value={row.studentId} />
                       <div className="space-y-2">
-                        <Label htmlFor={`feedback-body-${row.studentId}`}>Feedback note</Label>
+                        <Label htmlFor={`feedback-body-${row.studentId}`}>{t("assignmentDetail.feedbackNote")}</Label>
                         <Textarea
                           id={`feedback-body-${row.studentId}`}
                           maxLength={4000}
                           name="body"
-                          placeholder="Name the evidence, then give the student one clear next step."
+                          placeholder={t("assignmentDetail.feedbackPlaceholder")}
                           required
                           rows={4}
                         />
                       </div>
                       <div className="grid gap-4 sm:grid-cols-2">
                         <label className="space-y-2 text-sm font-medium text-slate-900">
-                          Attach question (optional)
+                          {t("assignmentDetail.attachQuestionOptional")}
                           <select
                             className="flex min-h-11 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
                             defaultValue=""
                             name="questionId"
                           >
-                            <option value="">Assignment-level feedback</option>
+                            <option value="">{t("assignmentDetail.assignmentLevelFeedback")}</option>
                             {attachableQuestions.map((questionRow) => (
                               <option
                                 key={questionRow.assignmentItemId}
                                 value={questionRow.question?.id ?? ""}
                               >
-                                {questionRow.question?.title || "Assignment question"}
+                                {questionRow.question?.title || t("assignmentDetail.assignmentQuestion")}
                               </option>
                             ))}
                           </select>
                         </label>
                         <label className="space-y-2 text-sm font-medium text-slate-900">
-                          Attach recent attempt (optional)
+                          {t("assignmentDetail.attachRecentAttemptOptional")}
                           <select
                             className="flex min-h-11 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
                             defaultValue=""
                             name="practiceAttemptId"
                           >
-                            <option value="">No attempt attachment</option>
+                            <option value="">{t("assignmentDetail.noAttemptAttachment")}</option>
                             {row.recentAttempts.map((attempt) => (
                               <option key={attempt.id} value={attempt.id}>
                                 {attempt.questionTitle} - {formatDateTime(attempt.createdAt)}
@@ -813,22 +811,21 @@ export default async function TeacherAssignmentDetailPage({
                         <FormSubmitButton
                           className="min-h-11"
                           formAction={savePrivateTeacherFeedbackNote}
-                          pendingLabel="Saving private note…"
+                          pendingLabel={t("assignmentDetail.savingPrivateNote")}
                           variant="outline"
                         >
-                          Save private note
+                          {t("assignmentDetail.savePrivateNote")}
                         </FormSubmitButton>
                         <FormSubmitButton
                           className="min-h-11"
                           formAction={sendTeacherFeedbackNote}
-                          pendingLabel="Sending feedback…"
+                          pendingLabel={t("assignmentDetail.sendingFeedback")}
                         >
-                          Send to student
+                          {t("assignmentDetail.sendToStudent")}
                         </FormSubmitButton>
                       </div>
                       <p className="text-xs leading-5 text-slate-500">
-                        Private notes are visible only to classroom managers. Sending does not expose
-                        source Library content, internal evidence, or other students&apos; work.
+                        {t("assignmentDetail.privateNotesVisibility")}
                       </p>
                     </form>
                   </details>
@@ -840,10 +837,10 @@ export default async function TeacherAssignmentDetailPage({
           <details className="teacher-panel overflow-hidden">
             <summary className="teacher-focus-ring min-h-11 cursor-pointer list-none p-5">
               <span className="block text-lg font-bold text-slate-950">
-                Assignment items
+                {t("assignmentDetail.assignmentItems")}
               </span>
               <span className="mt-1 block text-sm leading-6 text-slate-600">
-                Optional delivery content and source references.
+                {t("assignmentDetail.assignmentItemsDescription")}
               </span>
             </summary>
             {assignment.items.length ? (
@@ -853,7 +850,10 @@ export default async function TeacherAssignmentDetailPage({
                     <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                       <div className="min-w-0 space-y-1">
                         <p className="text-xs font-bold uppercase tracking-[0.14em] text-slate-500">
-                          Item {item.order_index} - {item.item_type}
+                          {t("assignmentDetail.itemSummary", {
+                            order: formatNumber(locale, item.order_index),
+                            type: itemTypeLabel(item.item_type),
+                          })}
                         </p>
                         <h3 className="text-base font-bold text-slate-950">
                           {item.question ? (
@@ -864,29 +864,29 @@ export default async function TeacherAssignmentDetailPage({
                               {item.question.title}
                             </Link>
                           ) : (
-                            "Question item"
+                            t("assignmentDetail.questionItem")
                           )}
                         </h3>
                         {item.question ? (
                           <p className="text-sm leading-6 text-slate-600">
-                            {item.question.question_code} - {item.question.question_type} -
-                            difficulty {item.question.difficulty_rating}
+                            {item.question.question_code} - {questionTypeLabel(item.question.question_type)} - {t("assignmentDetail.difficulty", {
+                              value: formatNumber(locale, item.question.difficulty_rating),
+                            })}
                           </p>
                         ) : (
                           <p className="text-sm leading-6 text-slate-600">
-                            This item references content that is no longer
-                            available.
+                            {t("assignmentDetail.unavailableItem")}
                           </p>
                         )}
                         {item.bank_question_id ? (
                           <p className="text-xs font-semibold text-sky-700">
-                            Delivered from selected Library item.
+                            {t("assignmentDetail.deliveredFromLibrary")}
                           </p>
                         ) : null}
                       </div>
                       {item.points !== null ? (
                         <span className="rounded-full bg-slate-100 px-2 py-1 text-xs font-semibold text-slate-700">
-                          {item.points} pts
+                          {t("assignmentDetail.points", { points: formatNumber(locale, item.points) })}
                         </span>
                       ) : null}
                     </div>
@@ -896,11 +896,10 @@ export default async function TeacherAssignmentDetailPage({
             ) : (
               <div className="p-8 text-center">
                 <h3 className="text-base font-bold text-slate-950">
-                  No assignment items yet.
+                  {t("assignmentDetail.noAssignmentItems")}
                 </h3>
                 <p className="mx-auto mt-2 max-w-md text-sm leading-6 text-slate-600">
-                  Create a new assignment with published questions to populate
-                  this list.
+                  {t("assignmentDetail.noAssignmentItemsDescription")}
                 </p>
               </div>
             )}
@@ -911,55 +910,55 @@ export default async function TeacherAssignmentDetailPage({
           <details className="teacher-panel overflow-hidden">
             <summary className="teacher-focus-ring min-h-11 cursor-pointer list-none p-5">
               <span className="block text-lg font-bold text-slate-950">
-                Assignment setup and source
+                {t("assignmentDetail.assignmentSetupAndSource")}
               </span>
               <span className="mt-1 block text-sm leading-6 text-slate-600">
-                Status, timing, instructions, and teacher-only source context.
+                {t("assignmentDetail.setupSourceDescription")}
               </span>
             </summary>
             <div className="space-y-5 border-t border-slate-100 p-5">
               <dl className="space-y-3 text-sm">
                 <div className="flex items-center justify-between gap-3">
-                  <dt className="text-slate-500">State</dt>
+                  <dt className="text-slate-500">{t("assignmentDetail.state")}</dt>
                   <dd className="font-semibold capitalize text-slate-950">
                     {statusLabel(assignment.status)}
                   </dd>
                 </div>
                 <div className="flex items-center justify-between gap-3">
-                  <dt className="text-slate-500">Assigned</dt>
+                  <dt className="text-slate-500">{t("assignmentDetail.assigned")}</dt>
                   <dd className="font-semibold text-slate-950">
                     {formatDateTime(assignment.assigned_at)}
                   </dd>
                 </div>
                 <div className="flex items-center justify-between gap-3">
-                  <dt className="text-slate-500">Due</dt>
+                  <dt className="text-slate-500">{t("assignmentDetail.due")}</dt>
                   <dd className="font-semibold text-slate-950">
                     {formatDateTime(assignment.due_at)}
                   </dd>
                 </div>
                 <div className="flex items-center justify-between gap-3">
-                  <dt className="text-slate-500">Items</dt>
+                  <dt className="text-slate-500">{t("assignmentDetail.items")}</dt>
                   <dd className="font-semibold text-slate-950">
-                    {assignment.itemCount}
+                    {formatNumber(locale, assignment.itemCount)}
                   </dd>
                 </div>
                 <div className="flex items-center justify-between gap-3">
-                  <dt className="text-slate-500">Source</dt>
+                  <dt className="text-slate-500">{t("assignmentDetail.source")}</dt>
                   <dd className="font-semibold text-slate-950">
                     {sourceKindLabel(assignment.source_kind)}
                   </dd>
                 </div>
                 <div>
-                  <dt className="text-slate-500">Student access</dt>
+                  <dt className="text-slate-500">{t("assignmentDetail.studentAccess")}</dt>
                   <dd className="font-semibold text-slate-950">
-                    Assignment-only. The full Library stays private.
+                    {t("assignmentDetail.assignmentOnlyLibraryPrivate")}
                   </dd>
                 </div>
               </dl>
               {assignment.instructions ? (
                 <div className="border-t border-slate-100 pt-4">
                   <h2 className="text-sm font-bold text-slate-950">
-                    Instructions
+                    {t("assignmentDetail.instructions")}
                   </h2>
                   <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-slate-600">
                     {assignment.instructions}
@@ -970,7 +969,7 @@ export default async function TeacherAssignmentDetailPage({
               assignment.source_record_id ? (
                 <Button asChild className="min-h-11 w-full" variant="outline">
                   <Link href={`/teacher/banks/${assignment.source_record_id}`}>
-                    Open source Library
+                    {t("assignmentDetail.openSourceLibrary")}
                   </Link>
                 </Button>
               ) : null}

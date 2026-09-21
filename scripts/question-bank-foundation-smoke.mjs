@@ -190,10 +190,10 @@ async function main() {
     "question bank foundation migration is missing create RPC or RLS",
   );
   assert(
-    banksPage.includes("Libraries") &&
-    banksPage.includes("Join by code") &&
-      bankDetailPage.includes("Next action") &&
-      bankDetailPage.includes('label: "Ready"'),
+    banksPage.includes('translate(locale, "teacher.allLibraries")') &&
+    banksPage.includes('translate(locale, "teacher.joinByCode")') &&
+      bankDetailPage.includes('t("teacherLibrary.nextAction")') &&
+      bankDetailPage.includes('label: t("teacherLibrary.ready")'),
     "question bank list/detail route sources are missing expected UI",
   );
   console.log("PASS question bank route sources expose list/detail surfaces");

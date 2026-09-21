@@ -1,7 +1,31 @@
 import type { ReactNode } from "react";
 
 import { AdminInfoTip } from "@/components/admin/admin-info-tip";
+import { translate, type MessageKey } from "@/lib/i18n/messages";
+import { getRequestLocale } from "@/lib/i18n/server";
 import { cn } from "@/lib/utils";
+
+const adminHeaderMessageKeys: Record<string, MessageKey> = {
+  "AI PDF Import": "admin.aiPdfImport",
+  "AI Settings": "admin.aiSettings",
+  "Approval Queue": "admin.approvalQueue",
+  "Bulk asset upload": "admin.bulkAssetUpload",
+  "Create question": "admin.createQuestion",
+  "Create revision": "admin.createRevision",
+  "Import Tools": "admin.importTools",
+  "Library Support": "admin.librarySupport",
+  "Package import": "admin.packageImport",
+  "Practice Frameworks": "admin.practiceFrameworks",
+  "Public Library": "admin.publicLibrary",
+  "Taxonomy": "admin.taxonomy",
+  "Teacher Submissions": "admin.teacherSubmissions",
+  "Videos": "admin.videos",
+};
+
+function localizedAdminHeaderText(locale: "en" | "zh-CN", value: string) {
+  const key = adminHeaderMessageKeys[value];
+  return key ? translate(locale, key) : value;
+}
 
 type AdminPageHeaderProps = {
   actions?: ReactNode;
@@ -16,7 +40,7 @@ type AdminPageHeaderProps = {
   title: string;
 };
 
-export function AdminPageHeader({
+export async function AdminPageHeader({
   actions,
   breadcrumbs,
   className,
@@ -28,6 +52,9 @@ export function AdminPageHeader({
   secondaryActions,
   title,
 }: AdminPageHeaderProps) {
+  const locale = await getRequestLocale();
+  const localizedTitle = localizedAdminHeaderText(locale, title);
+
   return (
     <header className={cn("space-y-4", className)}>
       {breadcrumbs ? (
@@ -43,7 +70,7 @@ export function AdminPageHeader({
           <div className="space-y-2">
             <div className="flex flex-wrap items-center gap-2">
               <h1 className="text-2xl font-semibold tracking-tight text-foreground md:text-3xl">
-                {title}
+                {localizedTitle}
               </h1>
               {help ? <AdminInfoTip label={helpLabel}>{help}</AdminInfoTip> : null}
             </div>
@@ -53,7 +80,7 @@ export function AdminPageHeader({
               </div>
             ) : null}
             {description && descriptionMode === "tooltip" && !help ? (
-              <AdminInfoTip label={helpLabel ?? "Page details"}>
+              <AdminInfoTip label={helpLabel ?? translate(locale, "common.pageDetails")}>
                 {description}
               </AdminInfoTip>
             ) : null}

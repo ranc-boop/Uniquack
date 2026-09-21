@@ -7,10 +7,12 @@ import {
   ClassroomMetricCard,
   ClassroomProgressRing,
   ClassroomRouteTabs,
-  formatClassroomDateTime,
 } from "@/app/teacher/classrooms/classroom-ui";
 import { Button } from "@/components/ui/button";
 import { requireTeacher } from "@/lib/auth/guards";
+import { formatDateTime as formatLocaleDateTime, formatNumber } from "@/lib/i18n/locale";
+import { getRequestLocale } from "@/lib/i18n/server";
+import { translate, type MessageKey } from "@/lib/i18n/messages";
 import { createClient } from "@/lib/supabase/server";
 import { getTeacherClassroomWorkspace } from "@/lib/teacher-classrooms";
 
@@ -24,6 +26,9 @@ export default async function ClassroomAnalyticsPage({
   params,
 }: ClassroomAnalyticsPageProps) {
   await requireTeacher();
+  const locale = await getRequestLocale();
+  const t = (key: MessageKey, values?: Record<string, number | string>) =>
+    translate(locale, key, values);
   const { id } = await params;
   const supabase = await createClient();
   const workspace = await getTeacherClassroomWorkspace({
@@ -53,20 +58,22 @@ export default async function ClassroomAnalyticsPage({
       <section className="teacher-hero">
         <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
           <div className="space-y-2">
-            <p className="teacher-eyebrow">Progress</p>
+            <p className="teacher-eyebrow">{t("classroomAnalytics.title")}</p>
             <h1 className="break-words text-3xl font-bold tracking-tight text-slate-950">
               {classroom.name}
             </h1>
             <p className="max-w-3xl text-base leading-7 text-slate-600">
-              Assignment and Practice evidence for this class.
+              {t("classroomAnalytics.description")}
             </p>
           </div>
           <div className="flex flex-wrap gap-2">
             <Button asChild>
-              <Link href="/teacher/progress">All progress</Link>
+              <Link href="/teacher/progress">{t("classroomAnalytics.allProgress")}</Link>
             </Button>
             <Button asChild variant="outline">
-              <Link href={`/teacher/classrooms/${classroom.id}`}>Back to overview</Link>
+              <Link href={`/teacher/classrooms/${classroom.id}`}>
+                {t("classroomAnalytics.backToOverview")}
+              </Link>
             </Button>
           </div>
         </div>
@@ -75,28 +82,30 @@ export default async function ClassroomAnalyticsPage({
       <ClassroomRouteTabs classroomId={classroom.id} />
       <section className="grid gap-3 md:grid-cols-4">
         <ClassroomMetricCard
-          description="Assigned delivery events for this class."
+          description={t("classroomAnalytics.assignedDescription")}
           icon={ClipboardCheck}
-          label="Assigned"
-          value={assigned.length}
+          label={t("classroom.assignmentStatusAssigned")}
+          value={formatNumber(locale, assigned.length)}
         />
         <ClassroomMetricCard
-          description="Practice sessions linked back to class assignments."
+          description={t("classroomAnalytics.practiceLinksDescription")}
           icon={BarChart3}
-          label="Practice links"
-          value={linkedPracticeSessions}
+          label={t("classroomAnalytics.practiceLinks")}
+          value={formatNumber(locale, linkedPracticeSessions)}
         />
         <ClassroomMetricCard
-          description="Latest assignment, progress, or practice activity."
+          description={t("classroomAnalytics.latestActivityDescription")}
           icon={Target}
-          label="Latest activity"
-          value={formatClassroomDateTime(latestActivity)}
+          label={t("classroomAnalytics.latestActivity")}
+          value={latestActivity
+            ? formatLocaleDateTime(locale, latestActivity, { dateStyle: "medium", timeStyle: "short" })
+            : t("classroom.noActivityYet")}
         />
         <ClassroomMetricCard
-          description="Active roster for assignment delivery."
+          description={t("classroomAnalytics.studentsDescription")}
           icon={MessageSquareText}
-          label="Students"
-          value={classroom.studentCount}
+          label={t("classroom.students")}
+          value={formatNumber(locale, classroom.studentCount)}
         />
       </section>
 
@@ -104,21 +113,20 @@ export default async function ClassroomAnalyticsPage({
         <ClassroomProgressRing
           helper={
             classroom.completionRate === null
-              ? "Completion appears after assigned work and student practice."
-              : "Assigned work completed by active students."
+              ? t("classroom.completionAppearsAfterPractice")
+              : t("classroom.assignedWorkCompleted")
           }
-          label="Class completion rate"
+          label={t("classroomAnalytics.classCompletionRate")}
           value={classroom.completionRate}
         />
 
         <section className="teacher-panel overflow-hidden">
           <div className="border-b border-slate-200 bg-white/70 p-5">
             <h2 className="text-xl font-bold text-slate-950">
-              Assignment completion summaries
+              {t("classroomAnalytics.assignmentCompletionSummaries")}
             </h2>
             <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-600">
-              Each row is based on current roster membership, assignment
-              progress, and linked Practice sessions.
+              {t("classroomAnalytics.summaryDescription")}
             </p>
           </div>
           {assigned.length ? (
@@ -135,32 +143,44 @@ export default async function ClassroomAnalyticsPage({
                         <h3 className="break-words text-base font-bold text-slate-950">
                           {assignment.title}
                         </h3>
-                        <ClassroomBadge tone="blue">Assigned</ClassroomBadge>
+                        <ClassroomBadge tone="blue">
+                          {t("classroom.assignmentStatusAssigned")}
+                        </ClassroomBadge>
                       </div>
                       <p className="mt-1 text-sm leading-6 text-slate-600">
-                        {assignment.itemCount} item(s),{" "}
-                        {assignment.progressSummary.linkedPracticeSessionCount} linked
-                        Practice session(s)
+                        {t("classroomAnalytics.assignmentEvidenceSummary", {
+                          items: formatNumber(locale, assignment.itemCount),
+                          sessions: formatNumber(
+                            locale,
+                            assignment.progressSummary.linkedPracticeSessionCount,
+                          ),
+                        })}
                       </p>
                     </div>
                     <div className="grid min-w-full grid-cols-3 gap-2 text-center lg:min-w-72">
                       <div className="rounded-lg border border-slate-200 bg-white px-3 py-2">
                         <span className="block text-base font-bold text-slate-950">
-                          {assignment.progressSummary.notStartedCount}
+                          {formatNumber(locale, assignment.progressSummary.notStartedCount)}
                         </span>
-                        <span className="text-xs text-slate-500">Not started</span>
+                        <span className="text-xs text-slate-500">
+                          {t("classroomAnalytics.notStarted")}
+                        </span>
                       </div>
                       <div className="rounded-lg border border-slate-200 bg-white px-3 py-2">
                         <span className="block text-base font-bold text-slate-950">
-                          {assignment.progressSummary.inProgressCount}
+                          {formatNumber(locale, assignment.progressSummary.inProgressCount)}
                         </span>
-                        <span className="text-xs text-slate-500">Active</span>
+                        <span className="text-xs text-slate-500">
+                          {t("classroomAnalytics.active")}
+                        </span>
                       </div>
                       <div className="rounded-lg border border-slate-200 bg-white px-3 py-2">
                         <span className="block text-base font-bold text-slate-950">
-                          {assignment.progressSummary.completedCount}
+                          {formatNumber(locale, assignment.progressSummary.completedCount)}
                         </span>
-                        <span className="text-xs text-slate-500">Done</span>
+                        <span className="text-xs text-slate-500">
+                          {t("classroomAnalytics.done")}
+                        </span>
                       </div>
                     </div>
                   </div>
@@ -169,13 +189,12 @@ export default async function ClassroomAnalyticsPage({
             </div>
           ) : (
             <div className="p-8 text-center">
-              <p className="teacher-eyebrow">No analytics yet</p>
+              <p className="teacher-eyebrow">{t("classroomAnalytics.noAnalyticsYet")}</p>
               <h3 className="mt-2 text-xl font-bold text-slate-950">
-                Assign selected Library content to begin evidence collection.
+                {t("classroomAnalytics.noAnalyticsTitle")}
               </h3>
               <p className="mx-auto mt-2 max-w-2xl text-sm leading-6 text-slate-600">
-                This page will remain empty until assigned work and Practice
-                evidence exist.
+                {t("classroomAnalytics.noAnalyticsDescription")}
               </p>
             </div>
           )}

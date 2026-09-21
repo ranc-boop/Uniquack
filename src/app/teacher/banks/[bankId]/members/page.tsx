@@ -6,6 +6,9 @@ import { KeyRound, Share2, Users } from "lucide-react";
 import { FormSubmitButton } from "@/components/form-submit-button";
 import { Button } from "@/components/ui/button";
 import { requireTeacher } from "@/lib/auth/guards";
+import { formatDate as formatLocaleDate } from "@/lib/i18n/locale";
+import { getRequestLocale } from "@/lib/i18n/server";
+import { translate } from "@/lib/i18n/messages";
 import {
   bankMemberProfileLabel,
   bankMemberRoleLabel,
@@ -34,29 +37,24 @@ import {
 
 export const dynamic = "force-dynamic";
 
-function formatDate(value: string | null) {
-  if (!value) return "Not set";
-
-  return new Intl.DateTimeFormat("en", {
-    day: "numeric",
-    month: "short",
-    year: "numeric",
-  }).format(new Date(value));
+function formatDate(locale: Parameters<typeof translate>[0], value: string | null) {
+  return value ? formatLocaleDate(locale, value, { day: "numeric", month: "short", year: "numeric" }) : translate(locale, "teacherLibrary.notSet");
 }
 
-function SetupNeededState() {
+function SetupNeededState({ locale }: { locale: Parameters<typeof translate>[0] }) {
+  const t = (key: Parameters<typeof translate>[1]) => translate(locale, key);
   return (
     <BankWorkbenchPage>
       <section className="rounded-lg border border-slate-200/80 bg-white/90 p-6 shadow-sm">
-        <p className="student-eyebrow">Setup needed</p>
+        <p className="student-eyebrow">{t("teacherLibrary.setupNeeded")}</p>
         <h1 className="mt-2 text-2xl font-bold text-slate-950">
-          Library sharing tables are not available yet.
+          {t("teacherLibrary.sharingTablesUnavailable")}
         </h1>
         <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-600">
-          Apply clean migration 0026, then return to this member workbench.
+          {t("teacherLibrary.applyMemberMigration")}
         </p>
         <Button asChild className="mt-5" variant="outline">
-          <Link href="/teacher/banks">Back to Libraries</Link>
+          <Link href="/teacher/banks">{t("teacherLibrary.backToLibraries")}</Link>
         </Button>
       </section>
     </BankWorkbenchPage>
@@ -75,6 +73,9 @@ export default async function TeacherBankMembersPage({
     saved?: string;
   }>;
 }) {
+  const locale = await getRequestLocale();
+  const t = (key: Parameters<typeof translate>[1], values?: Parameters<typeof translate>[2]) => translate(locale, key, values);
+  const roleLabel = (role: string) => role === "owner" ? t("teacherLibrary.owner") : role === "editor" ? t("teacherLibrary.editor") : t("teacherLibrary.viewer");
   const profile = await requireTeacher();
   const { bankId } = await params;
   const query = await searchParams;
@@ -91,7 +92,7 @@ export default async function TeacherBankMembersPage({
     shareCodes = await listBankShareCodes({ bankId, supabase });
   } catch (error) {
     if (error instanceof QuestionBankSchemaMissingError) {
-      return <SetupNeededState />;
+      return <SetupNeededState locale={locale} />;
     }
 
     throw error;
@@ -111,56 +112,56 @@ export default async function TeacherBankMembersPage({
       <BankHeroPanel
         actions={
           <BankQuickAction href="/teacher/banks/join" icon={Share2}>
-            Join Library
+            {t("teacherLibrary.joinLibrary")}
           </BankQuickAction>
         }
         subtitle={bank.name}
-        title="Members"
+        title={t("teacherLibrary.members")}
       />
 
       <BankRouteTabs bankId={bank.id} currentUserRole={currentUserRole} />
 
       {query.saved ? (
         <section className="rounded-lg border border-emerald-200 bg-emerald-50 p-4 text-sm font-semibold text-emerald-800">
-          {query.saved}
+          {t("teacherLibrary.saved")}
         </section>
       ) : null}
       {query.error ? (
         <section className="rounded-lg border border-rose-200 bg-rose-50 p-4 text-sm font-semibold text-rose-800">
-          {query.error}
+          {t("common.requestFailed")}
         </section>
       ) : null}
 
       <section className="grid gap-3 md:grid-cols-3">
         <BankMetricCard
-          description="Active teacher collaborators on this Library."
+          description={t("teacherLibrary.activeCollaborators")}
           icon={Users}
-          label="Active members"
+          label={t("teacherLibrary.activeMembers")}
           value={activeMembers.length}
         />
         <BankMetricCard
-          description="Current join codes that can add teachers."
+          description={t("teacherLibrary.currentJoinCodes")}
           icon={KeyRound}
-          label="Active codes"
+          label={t("teacherLibrary.activeCodes")}
           value={activeShareCodes.length}
         />
         <BankMetricCard
-          description="Only owners can create codes or manage roles."
+          description={t("teacherLibrary.onlyOwnersManage")}
           icon={Share2}
-          label="Your access"
-          value={canManage ? "Owner controls" : "Read-only controls"}
+          label={t("teacherLibrary.yourAccess")}
+          value={canManage ? t("teacherLibrary.ownerControls") : t("teacherLibrary.readOnlyControls")}
         />
       </section>
 
       {query.newCode ? (
         <section className="rounded-lg border border-sky-200 bg-sky-50/70 p-5 shadow-sm">
-          <p className="student-eyebrow">Copy now</p>
+          <p className="student-eyebrow">{t("teacherLibrary.copyNow")}</p>
           <h2 className="mt-2 text-xl font-bold text-slate-950">
-            New share code created
+            {t("teacherLibrary.newShareCodeCreated")}
           </h2>
           <p className="mt-2 text-sm leading-6 text-slate-600">
-            Copy this code now. It is stored hashed and cannot be shown again.
-            This code grants {query.role === "editor" ? "editor" : "viewer"} access.
+            {t("teacherLibrary.copyCodeWarning")}
+            {t("teacherLibrary.codeGrantsAccess", { role: roleLabel(query.role === "editor" ? "editor" : "viewer") })}
           </p>
           <code className="mt-4 block rounded-lg border border-sky-200 bg-white px-4 py-3 text-lg font-bold tracking-wide text-slate-950">
             {query.newCode}
@@ -171,8 +172,8 @@ export default async function TeacherBankMembersPage({
       <section className="grid gap-4 lg:grid-cols-[1fr_0.85fr]">
         <article className="rounded-lg border border-slate-200/80 bg-white/85 shadow-[0_18px_48px_-40px_rgba(15,23,42,0.7)] ring-1 ring-slate-950/5 backdrop-blur">
           <BankSectionHeader
-            description="Owners can update collaborators between viewer and editor, or remove access. At least one owner must remain active."
-            title="Members"
+            description={t("teacherLibrary.membersDescription")}
+            title={t("teacherLibrary.members")}
           />
           <div className="divide-y divide-slate-100">
             {members.map((member) => {
@@ -188,7 +189,7 @@ export default async function TeacherBankMembersPage({
                           {bankMemberProfileLabel(member)}
                         </h3>
                         <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-700">
-                          {bankMemberRoleLabel(member.role)}
+                          {roleLabel(member.role)}
                         </span>
                         <span className="rounded-full bg-white px-2.5 py-1 text-xs font-semibold text-slate-600 ring-1 ring-slate-200">
                           {member.status}
@@ -198,7 +199,7 @@ export default async function TeacherBankMembersPage({
                         {member.profile?.email || member.user_id}
                       </p>
                       <p className="mt-1 text-xs text-slate-500">
-                        Joined {formatDate(member.joined_at)}
+                        {t("teacherLibrary.joined")} {formatDate(locale, member.joined_at)}
                       </p>
                     </div>
 
@@ -213,20 +214,20 @@ export default async function TeacherBankMembersPage({
                             value={member.role === "viewer" ? "editor" : "viewer"}
                           />
                           <FormSubmitButton
-                            pendingLabel="Updating role..."
+                            pendingLabel={t("teacherLibrary.updatingRole")}
                             variant="outline"
                           >
-                            Make {member.role === "viewer" ? "editor" : "viewer"}
+                            {t("teacherLibrary.makeRole", { role: roleLabel(member.role === "viewer" ? "editor" : "viewer") })}
                           </FormSubmitButton>
                         </form>
                         <form action={removeBankMember}>
                           <input name="bankId" type="hidden" value={bank.id} />
                           <input name="userId" type="hidden" value={member.user_id} />
                           <FormSubmitButton
-                            pendingLabel="Removing member..."
+                            pendingLabel={t("teacherLibrary.removingMember")}
                             variant="outline"
                           >
-                            Remove
+                            {t("teacherLibrary.remove")}
                           </FormSubmitButton>
                         </form>
                       </div>
@@ -241,42 +242,41 @@ export default async function TeacherBankMembersPage({
         <aside className="space-y-4">
           <section className="rounded-lg border border-slate-200/80 bg-white/85 p-5 shadow-[0_18px_48px_-40px_rgba(15,23,42,0.7)] ring-1 ring-slate-950/5">
             <h2 className="text-lg font-bold text-slate-950">
-              Owner-controlled sharing
+              {t("teacherLibrary.ownerControlledSharing")}
             </h2>
             <p className="mt-2 text-sm leading-6 text-slate-600">
-              Share codes are for teacher collaboration. Share codes are shown
-              only once and stored only as hashes.
+              {t("teacherLibrary.sharingDescription")}
             </p>
             {canManage ? (
               <form action={createBankShareCode} className="mt-4 space-y-4">
                 <input name="bankId" type="hidden" value={bank.id} />
                 <label className="block">
                   <span className="text-sm font-semibold text-slate-900">
-                    Granted role
+                    {t("teacherLibrary.grantedRole")}
                   </span>
                   <select
                     className="mt-2 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-950 shadow-sm outline-none transition focus:border-sky-400 focus:ring-2 focus:ring-sky-100"
                     defaultValue="viewer"
                     name="grantedRole"
                   >
-                    <option value="viewer">Viewer</option>
-                    <option value="editor">Editor</option>
+                    <option value="viewer">{t("teacherLibrary.viewer")}</option>
+                    <option value="editor">{t("teacherLibrary.editor")}</option>
                   </select>
                 </label>
-                <FormSubmitButton pendingLabel="Creating share code...">
-                  Create share code
+                <FormSubmitButton pendingLabel={t("teacherLibrary.creatingShareCode")}>
+                  {t("teacherLibrary.createShareCode")}
                 </FormSubmitButton>
               </form>
             ) : (
               <p className="mt-4 rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm text-slate-600">
-                Only Library owners can create or revoke share codes.
+                {t("teacherLibrary.onlyOwnersShareCodes")}
               </p>
             )}
           </section>
 
           <section className="rounded-lg border border-slate-200/80 bg-white/85 p-5 shadow-[0_18px_48px_-40px_rgba(15,23,42,0.7)] ring-1 ring-slate-950/5">
             <h2 className="text-lg font-bold text-slate-950">
-              Active share codes
+              {t("teacherLibrary.activeShareCodes")}
             </h2>
             <div className="mt-4 space-y-3">
               {activeShareCodes.length ? (
@@ -288,10 +288,10 @@ export default async function TeacherBankMembersPage({
                     <div className="flex items-center justify-between gap-3">
                       <div>
                         <p className="text-sm font-semibold text-slate-950">
-                          {code.code_hint || "Hashed code"}
+                          {code.code_hint || t("teacherLibrary.hashedCode")}
                         </p>
                         <p className="mt-1 text-xs text-slate-500">
-                          Grants {bankMemberRoleLabel(code.role_granted)} access
+                          {t("teacherLibrary.grantsAccess", { role: roleLabel(code.role_granted) })}
                         </p>
                       </div>
                       {canManage ? (
@@ -303,25 +303,25 @@ export default async function TeacherBankMembersPage({
                             value={code.id}
                           />
                           <FormSubmitButton
-                            pendingLabel="Revoking code..."
+                            pendingLabel={t("teacherLibrary.revokingCode")}
                             variant="outline"
                           >
-                            Revoke
+                            {t("teacherLibrary.revoke")}
                           </FormSubmitButton>
                         </form>
                       ) : null}
                     </div>
                     <p className="mt-2 text-xs text-slate-500">
-                      Created {formatDate(code.created_at)}
+                      {t("teacherLibrary.created")} {formatDate(locale, code.created_at)}
                       {code.last_used_at
-                        ? ` - Last used ${formatDate(code.last_used_at)}`
+                        ? ` - ${t("teacherLibrary.lastUsed")} ${formatDate(locale, code.last_used_at)}`
                         : ""}
                     </p>
                   </div>
                 ))
               ) : (
                 <p className="rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm text-slate-600">
-                  No active share codes.
+                  {t("teacherLibrary.noActiveShareCodes")}
                 </p>
               )}
             </div>

@@ -8,6 +8,10 @@ function assert(condition, message) {
   if (!condition) throw new Error(message);
 }
 
+function usesMessageKeys(source, ...keys) {
+  return keys.every((key) => source.includes(`"${key}"`));
+}
+
 async function read(relativePath) {
   return readFile(resolve(root, relativePath), "utf8");
 }
@@ -34,23 +38,13 @@ assert(
   "Student My Work UI must not introduce Library management or privileged data paths",
 );
 
-for (const contract of [
-  'title: "Overdue"',
-  'title: "Due today"',
-  'title: "Due soon"',
-  'title: "In progress"',
-]) {
-  assert(
-    workPage.includes(contract),
-    `My Work urgency groups are missing ${contract}`,
-  );
-}
 assert(
-  workPage.includes("urgencyRank") &&
+  usesMessageKeys(workPage, "work.overdue", "work.dueToday", "student.dueSoon", "student.inProgress") &&
+    workPage.includes("urgencyRank") &&
     workPage.includes("compareIncompleteWork") &&
     workPage.includes("const nextAssignment = incomplete[0]") &&
-    workPage.includes("Do this next"),
-  "My Work must sort incomplete assignments and expose one next assignment",
+    usesMessageKeys(workPage, "work.doNext"),
+  "My Work must sort incomplete assignments, expose one next assignment, and localize urgency labels",
 );
 assert(
   workPage.includes(".filter((group) => group.items.length > 0)") &&
@@ -58,7 +52,7 @@ assert(
   "My Work must omit empty urgency groups",
 );
 assert(
-  /function CompletedSection[\s\S]*?<details>[\s\S]*?<h2[^>]*>Completed<\/h2>/.test(
+  /function CompletedSection[\s\S]*?<details>[\s\S]*?translate\(locale, "student.completed"\)/.test(
     workPage,
   ) &&
     !/function CompletedSection[\s\S]*?<details\s+open/.test(workPage),
@@ -66,14 +60,45 @@ assert(
 );
 assert(
   workPage.includes("`/practice?assignmentId=${assignment.id}&returnTo=") &&
-    workPage.includes('label: "Open assignment"') &&
-    workPage.includes('label: "Review work"'),
+    usesMessageKeys(workPage, "work.openAssignment", "work.reviewWork"),
   "My Work CTA labels and destinations must match the action they perform",
+);
+
+assert(
+  detailPage.includes("getRequestLocale()") &&
+    usesMessageKeys(
+      detailPage,
+      "student.assignedWork",
+      "work.assignmentUnavailable",
+      "work.assignmentUnavailableDescription",
+      "practice.backToMyWork",
+      "work.dueAt",
+      "work.practiceQuestions",
+      "work.teacherInstructions",
+      "work.continueWhereStopped",
+      "work.readyToStart",
+      "work.startedAt",
+      "work.completedAt",
+      "work.updatedAt",
+      "work.practiceUnavailable",
+      "work.teacherFeedback",
+      "work.sentFeedback",
+      "work.sentAt",
+      "work.assignedQuestions",
+      "work.itemSummary",
+      "work.questionItemUnavailable",
+      "work.questionDetails",
+      "work.questionItemCannotPractice",
+      "work.points",
+      "work.noUsableQuestionItems",
+      "work.itemListPreparing",
+    ),
+  "Student assignment details must localize static workflow labels without changing scoped data access",
 );
 
 const heroStart = detailPage.indexOf('<section className="student-hero">', 1);
 const feedbackStart = detailPage.indexOf("{feedbackNotes.length ? (");
-const itemsStart = detailPage.indexOf("Assigned questions");
+const itemsStart = detailPage.indexOf('"work.assignedQuestions"');
 const practiceLink = detailPage.indexOf(
   "`/practice?assignmentId=${assignment.id}&returnTo=",
 );

@@ -5,6 +5,8 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { requireStudentWorkspace } from "@/lib/auth/guards";
+import { translate } from "@/lib/i18n/messages";
+import { getRequestLocale } from "@/lib/i18n/server";
 
 export const dynamic = "force-dynamic";
 
@@ -18,25 +20,27 @@ type JoinClassroomPageProps = {
 export default async function JoinClassroomPage({
   searchParams,
 }: JoinClassroomPageProps) {
-  await requireStudentWorkspace();
-  const params = await searchParams;
+  const [, params, locale] = await Promise.all([
+    requireStudentWorkspace(),
+    searchParams,
+    getRequestLocale(),
+  ]);
 
   return (
     <main className="space-y-6">
       <section className="student-hero">
         <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
           <div className="space-y-2">
-            <p className="student-eyebrow">Join classroom</p>
+            <p className="student-eyebrow">{translate(locale, "classrooms.joinEyebrow")}</p>
             <h1 className="text-3xl font-bold tracking-tight text-slate-950">
-              Enter your class code
+              {translate(locale, "classrooms.joinTitle")}
             </h1>
             <p className="max-w-2xl text-base leading-7 text-slate-600">
-              Use the code from your teacher to add this classroom to your
-              account.
+              {translate(locale, "classrooms.joinDescription")}
             </p>
           </div>
           <Button asChild variant="outline">
-            <StudentPendingLink href="/student/classrooms">My classes</StudentPendingLink>
+            <StudentPendingLink href="/student/classrooms">{translate(locale, "classrooms.title")}</StudentPendingLink>
           </Button>
         </div>
       </section>
@@ -48,18 +52,18 @@ export default async function JoinClassroomPage({
       ) : null}
       {params.error ? (
         <p className="rounded-lg border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm font-medium text-destructive">
-          {params.error}
+          {translate(locale, "common.requestFailed")}
         </p>
       ) : null}
 
       <section className="student-panel max-w-xl p-5">
-        <h2 className="text-lg font-bold text-slate-950">Join by code</h2>
+        <h2 className="text-lg font-bold text-slate-950">{translate(locale, "classrooms.joinByCode")}</h2>
         <p className="student-muted">
-          Codes are not case-sensitive. Spaces and hyphens are okay.
+          {translate(locale, "classrooms.joinCodeHint")}
         </p>
         <form action={joinClassroomByCode} className="mt-5 space-y-4">
           <div className="space-y-2">
-            <Label htmlFor="join_code">Class code</Label>
+            <Label htmlFor="join_code">{translate(locale, "classrooms.classCode")}</Label>
             <Input
               autoCapitalize="characters"
               autoComplete="off"
@@ -71,8 +75,8 @@ export default async function JoinClassroomPage({
               required
             />
           </div>
-          <FormSubmitButton pendingLabel="Joining classroom…">
-            Join classroom
+          <FormSubmitButton pendingLabel={translate(locale, "classrooms.joining")}>
+            {translate(locale, "classrooms.join")}
           </FormSubmitButton>
         </form>
       </section>

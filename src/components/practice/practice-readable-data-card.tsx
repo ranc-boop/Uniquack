@@ -1,5 +1,8 @@
+"use client";
+
 import type { ReactNode } from "react";
 
+import { useLocale } from "@/components/i18n/locale-provider";
 import { FeedbackText } from "@/components/math-content";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
@@ -86,6 +89,7 @@ export function ReadableDataCard({
   title: string;
   value: unknown;
 }) {
+  const { t } = useLocale();
   const summary = plainText(value);
   const highlights = objectHighlights(value);
   const hasValue = Boolean(summary || highlights.length);
@@ -112,7 +116,7 @@ export function ReadableDataCard({
               </div>
             ) : null}
             <details className="rounded-lg border border-slate-200 bg-slate-50/70 p-3 text-xs">
-              <summary className="cursor-pointer font-semibold text-slate-700">Show raw details</summary>
+              <summary className="cursor-pointer font-semibold text-slate-700">{t("practice.rawDetails")}</summary>
               <pre className="mt-3 max-h-56 overflow-auto whitespace-pre-wrap rounded-md bg-white p-3 text-[11px] leading-5 text-slate-500 ring-1 ring-slate-200">
                 {compactJson(value, 2400)}
               </pre>

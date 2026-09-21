@@ -15,6 +15,9 @@ import { RoutePendingLink } from "@/components/route-pending-link";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { formatNumber, type Locale } from "@/lib/i18n/locale";
+import { translate } from "@/lib/i18n/messages";
+import { getRequestLocale } from "@/lib/i18n/server";
 import { cn } from "@/lib/utils";
 
 export type WorkbenchApprovalStatus = "pending" | "approved";
@@ -70,17 +73,18 @@ function StatusControl({
   activeStatus,
   approvedHref,
   baseHref,
+  locale,
   pendingHref,
   query,
-}: Pick<QuestionManagementWorkbenchProps, "activeStatus" | "approvedHref" | "baseHref" | "pendingHref" | "query">) {
+}: Pick<QuestionManagementWorkbenchProps, "activeStatus" | "approvedHref" | "baseHref" | "pendingHref" | "query"> & { locale: Locale }) {
   return (
     <nav
-      aria-label="Approval status"
+      aria-label={translate(locale, "questions.approvalStatus")}
       className="inline-flex rounded-[10px] bg-[#E8E8ED] p-1"
     >
       {([
-        ["pending", "Pending"],
-        ["approved", "Approved"],
+        ["pending", translate(locale, "questions.pending")],
+        ["approved", translate(locale, "questions.approved")],
       ] as const).map(([status, label]) => (
         <RoutePendingLink
           aria-current={activeStatus === status ? "page" : undefined}
@@ -107,35 +111,37 @@ function StatusControl({
   );
 }
 
-function Inspector({ item }: { item: QuestionWorkbenchItem }) {
+function Inspector({ item, locale }: { item: QuestionWorkbenchItem; locale: Locale }) {
   const checks = [
     {
-      label: "Answer & grading",
+      label: translate(locale, "questions.answerGrading"),
       ok: item.gradingCapability !== "needs_configuration",
       value:
         item.gradingCapability === "deterministic"
-          ? "Deterministic"
+          ? translate(locale, "questions.deterministic")
           : item.gradingCapability === "ai_review"
-            ? "AI review"
-            : "Configuration required",
+            ? translate(locale, "questions.aiReview")
+            : translate(locale, "questions.configurationRequired"),
     },
     {
-      label: "Taxonomy",
+      label: translate(locale, "questions.taxonomy"),
       ok: item.taxonomyReady,
-      value: item.taxonomyReady ? "Approved" : "Approval required",
+      value: item.taxonomyReady
+        ? translate(locale, "questions.approved")
+        : translate(locale, "questions.approvalRequired"),
     },
     {
-      label: "Source",
+      label: translate(locale, "questions.source"),
       ok: Boolean(item.sourceLabel),
-      value: item.sourceLabel || "Not recorded",
+      value: item.sourceLabel || translate(locale, "questions.notRecorded"),
     },
   ];
 
   return (
-    <aside className="question-workbench-inspector" aria-label="Approval inspector">
+    <aside className="question-workbench-inspector" aria-label={translate(locale, "questions.approvalInspector")}>
       <div className="flex items-center gap-2">
         <ShieldCheck aria-hidden className="size-4 text-[#0071E3]" />
-        <h2 className="text-sm font-semibold text-[#1D1D1F]">Approval checks</h2>
+        <h2 className="text-sm font-semibold text-[#1D1D1F]">{translate(locale, "questions.approvalChecks")}</h2>
       </div>
       <div className="mt-4 divide-y divide-[#E5E5EA]">
         {checks.map((check) => (
@@ -149,7 +155,7 @@ function Inspector({ item }: { item: QuestionWorkbenchItem }) {
                 "mt-0.5 size-2 rounded-full",
                 check.ok ? "bg-emerald-500" : "bg-amber-500",
               )}
-              title={check.ok ? "Ready" : "Action required"}
+              title={check.ok ? translate(locale, "questions.ready") : translate(locale, "questions.actionRequired")}
             />
           </div>
         ))}
@@ -158,7 +164,7 @@ function Inspector({ item }: { item: QuestionWorkbenchItem }) {
   );
 }
 
-export function QuestionManagementWorkbench({
+export async function QuestionManagementWorkbench({
   activeStatus,
   approvedHref,
   baseHref,
@@ -176,11 +182,12 @@ export function QuestionManagementWorkbench({
   currentPage = 1,
   pageSize = 25,
 }: QuestionManagementWorkbenchProps) {
+  const locale = await getRequestLocale();
   const selected = items.find((item) => item.id === selectedId) ?? items[0];
   const totalPages = Math.max(1, Math.ceil(totalCount / pageSize));
 
   return (
-    <section className="question-workbench" aria-label={`${libraryName} question workbench`}>
+    <section className="question-workbench" aria-label={`${libraryName} ${translate(locale, "questions.workbench")}`}>
       <header className="question-workbench-toolbar">
         {showTitle ? (
           <div className="min-w-0">
@@ -195,14 +202,15 @@ export function QuestionManagementWorkbench({
               activeStatus={activeStatus}
               approvedHref={approvedHref}
               baseHref={baseHref}
+              locale={locale}
               pendingHref={pendingHref}
               query={query}
             />
           ) : null}
           {canCreate && createHref ? (
             <Button asChild className="min-h-11 bg-[#0071E3] hover:bg-[#0077ED]">
-              <RoutePendingLink href={createHref} pendingLabel="Create question">
-                Create
+              <RoutePendingLink href={createHref} pendingLabel={translate(locale, "questions.createQuestion")}>
+                {translate(locale, "common.create")}
               </RoutePendingLink>
             </Button>
           ) : null}
@@ -212,22 +220,24 @@ export function QuestionManagementWorkbench({
       <form className="question-workbench-search" role="search">
         <Search aria-hidden className="size-4 text-[#6E6E73]" />
         <Input
-          aria-label="Search questions"
+          aria-label={translate(locale, "questions.search")}
           className="h-10 border-0 bg-transparent px-0 shadow-none focus-visible:ring-0"
           defaultValue={query}
           name="q"
-          placeholder="Search by code or title"
+          placeholder={translate(locale, "questions.searchPlaceholder")}
         />
         <input name="status" type="hidden" value={activeStatus} />
       </form>
 
       <div className="question-workbench-grid">
-        <div className="question-workbench-list" aria-label="Question list">
+        <div className="question-workbench-list" aria-label={translate(locale, "questions.list")}>
           <div className="flex items-center justify-between border-b border-[#E5E5EA] px-4 py-3">
             <span className="text-sm font-medium text-[#1D1D1F]">
-              {activeStatus === "approved" ? "Approved" : "Pending"}
+              {activeStatus === "approved"
+                ? translate(locale, "questions.approved")
+                : translate(locale, "questions.pending")}
             </span>
-            <span className="text-xs text-[#6E6E73]">{totalCount}</span>
+            <span className="text-xs text-[#6E6E73]">{formatNumber(locale, totalCount)}</span>
           </div>
           {items.length ? (
             <>
@@ -265,18 +275,18 @@ export function QuestionManagementWorkbench({
               </div>
               {totalPages > 1 ? (
                 <nav
-                  aria-label="Question pages"
+                  aria-label={translate(locale, "questions.pages")}
                   className="flex items-center justify-between border-t border-[#E5E5EA] px-4 py-3 text-xs text-[#6E6E73]"
                 >
                   {currentPage > 1 ? (
-                    <RoutePendingLink href={withParams(baseHref, { q: query, status: activeStatus, page: String(currentPage - 1) })} pendingLabel="Previous page">
-                      Previous
+                    <RoutePendingLink href={withParams(baseHref, { q: query, status: activeStatus, page: String(currentPage - 1) })} pendingLabel={translate(locale, "questions.previousPage")}>
+                      {translate(locale, "questions.previous")}
                     </RoutePendingLink>
                   ) : <span />}
-                  <span>{currentPage} / {totalPages}</span>
+                  <span>{formatNumber(locale, currentPage)} / {formatNumber(locale, totalPages)}</span>
                   {currentPage < totalPages ? (
-                    <RoutePendingLink href={withParams(baseHref, { q: query, status: activeStatus, page: String(currentPage + 1) })} pendingLabel="Next page">
-                      Next
+                    <RoutePendingLink href={withParams(baseHref, { q: query, status: activeStatus, page: String(currentPage + 1) })} pendingLabel={translate(locale, "questions.nextPage")}>
+                      {translate(locale, "questions.next")}
                     </RoutePendingLink>
                   ) : <span />}
                 </nav>
@@ -285,7 +295,7 @@ export function QuestionManagementWorkbench({
           ) : (
             <div className="p-8 text-center">
               <ClipboardCheck aria-hidden className="mx-auto size-7 text-[#AEAEB2]" />
-              <p className="mt-3 text-sm font-medium text-[#1D1D1F]">No questions yet</p>
+              <p className="mt-3 text-sm font-medium text-[#1D1D1F]">{translate(locale, "questions.noneYet")}</p>
             </div>
           )}
         </div>
@@ -304,7 +314,9 @@ export function QuestionManagementWorkbench({
                           : "bg-amber-50 text-amber-700",
                       )}
                     >
-                      {selected.approvalStatus === "approved" ? "Approved" : "Pending"}
+                      {selected.approvalStatus === "approved"
+                        ? translate(locale, "questions.approved")
+                        : translate(locale, "questions.pending")}
                     </Badge>
                     <span className="text-xs text-[#6E6E73]">{selected.questionCode}</span>
                   </div>
@@ -320,13 +332,13 @@ export function QuestionManagementWorkbench({
                       variant={selected.approvalStatus === "approved" ? "outline" : "default"}
                       className={selected.approvalStatus === "pending" ? "bg-[#0071E3] hover:bg-[#0077ED]" : undefined}
                     >
-                      <RoutePendingLink href={selected.actionHref} pendingLabel={selected.actionLabel ?? "Question action"}>
+                      <RoutePendingLink href={selected.actionHref} pendingLabel={selected.actionLabel ?? translate(locale, "questions.action")}>
                         {selected.approvalStatus === "approved" ? (
                           <FilePlus2 aria-hidden className="mr-2 size-4" />
                         ) : (
                           <CheckCircle2 aria-hidden className="mr-2 size-4" />
                         )}
-                        {selected.actionLabel ?? (selected.approvalStatus === "approved" ? "Create revision" : "Approve")}
+                        {selected.actionLabel ?? (selected.approvalStatus === "approved" ? translate(locale, "questions.createRevision") : translate(locale, "questions.approve"))}
                       </RoutePendingLink>
                     </Button>
                   ) : null}
@@ -334,12 +346,12 @@ export function QuestionManagementWorkbench({
                     <form action={archiveAction}>
                       <input name="bank_question_id" type="hidden" value={selected.archiveId} />
                       <FormSubmitButton
-                        pendingLabel="Archiving..."
+                        pendingLabel={translate(locale, "questions.archiving")}
                         size="sm"
                         variant="outline"
                       >
                         <Archive aria-hidden className="mr-2 size-4" />
-                        Archive
+                        {translate(locale, "questions.archive")}
                       </FormSubmitButton>
                     </form>
                   ) : null}
@@ -349,7 +361,7 @@ export function QuestionManagementWorkbench({
                 <MathContent className="border-0 p-0 text-base leading-7" value={String(selected.contentHtml)} />
                 {selected.solutionHtml ? (
                   <section className="rounded-[14px] bg-[#F5F5F7] p-4">
-                    <h3 className="mb-2 text-sm font-semibold text-[#1D1D1F]">Answer & explanation</h3>
+                    <h3 className="mb-2 text-sm font-semibold text-[#1D1D1F]">{translate(locale, "questions.answerExplanation")}</h3>
                     <MathContent className="border-0 bg-transparent p-0" value={String(selected.solutionHtml)} />
                   </section>
                 ) : null}
@@ -357,12 +369,12 @@ export function QuestionManagementWorkbench({
             </>
           ) : (
             <div className="flex min-h-72 items-center justify-center text-sm text-[#6E6E73]">
-              Select a question to inspect its full content.
+              {translate(locale, "questions.selectToInspect")}
             </div>
           )}
         </main>
 
-        {selected ? <Inspector item={selected} /> : <aside className="question-workbench-inspector" />}
+        {selected ? <Inspector item={selected} locale={locale} /> : <aside className="question-workbench-inspector" />}
       </div>
     </section>
   );

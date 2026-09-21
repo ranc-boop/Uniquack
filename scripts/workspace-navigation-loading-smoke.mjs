@@ -63,6 +63,10 @@ function assert(condition, message) {
   if (!condition) throw new Error(message);
 }
 
+function usesMessageKeys(source, ...keys) {
+  return keys.every((key) => source.includes(`"${key}"`));
+}
+
 const routeProgressStart = globalStyles.indexOf(".route-progress");
 const routeProgressEnd = globalStyles.indexOf(".loading-indicator-spinner", routeProgressStart);
 const routeProgressStyles = globalStyles.slice(routeProgressStart, routeProgressEnd);
@@ -102,7 +106,7 @@ assert(
     routeFeedback.includes('anchor.dataset.routeProgress !== "page"') &&
     routeFeedback.includes('setPhase("complete")') &&
     routeFeedback.includes('aria-live="polite"') &&
-    routeFeedback.includes("Loading page") &&
+    usesMessageKeys(routeFeedback, "common.loadingPage") &&
     routeFeedback.includes('anchor.target !== "_self"') &&
     routeFeedback.includes('anchor.hasAttribute("download")'),
   "Only explicitly marked page navigation may use the single-pass global progress bar.",

@@ -20,6 +20,9 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { requireTeacher } from "@/lib/auth/guards";
+import { formatNumber, type Locale } from "@/lib/i18n/locale";
+import { translate } from "@/lib/i18n/messages";
+import { getRequestLocale } from "@/lib/i18n/server";
 import { readTeacherFocusSelectionReceipt } from "@/lib/teacher-focus-selection";
 import { isDatabaseUuid } from "@/lib/teacher-focus-workspace";
 import {
@@ -62,20 +65,21 @@ type TeacherPublishPageProps = {
   }>;
 };
 
-function SetupNeededState() {
+function SetupNeededState({ locale }: { locale: Locale }) {
   return (
     <main className="teacher-shell space-y-6">
       <section className="teacher-panel p-6">
-        <p className="teacher-eyebrow">Setup needed</p>
+        <p className="teacher-eyebrow">{translate(locale, "assignment.setupNeeded")}</p>
         <h1 className="mt-2 text-2xl font-bold text-slate-950">
-          Assignments need the Library assignment schema.
+          {translate(locale, "assignment.schemaRequired")}
         </h1>
         <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-600">
-          Apply the clean Library, classroom, and assignment migrations,
-          then return to Assignments.
+          {translate(locale, "assignment.schemaSetupDescription")}
         </p>
         <Button asChild className="mt-5" variant="outline">
-          <Link href="/teacher">Back to Teacher Workspace</Link>
+          <Link href="/teacher">
+            {translate(locale, "assignment.backToTeacherWorkspace")}
+          </Link>
         </Button>
       </section>
     </main>
@@ -117,8 +121,10 @@ function buildPublishHref({
 
 function SourceLibraryPicker({
   banks,
+  locale,
 }: {
   banks: TeacherQuestionBankSummary[];
+  locale: Locale;
 }) {
   return (
     <section
@@ -127,9 +133,9 @@ function SourceLibraryPicker({
       tabIndex={-1}
     >
       <div className="border-b border-slate-100 p-5">
-        <p className="teacher-eyebrow">Step 1 of 2</p>
+        <p className="teacher-eyebrow">{translate(locale, "assignment.stepOneOfTwo")}</p>
         <h2 className="text-xl font-bold text-slate-950">
-          Choose one source Library
+          {translate(locale, "assignment.chooseSourceLibrary")}
         </h2>
       </div>
 
@@ -144,7 +150,9 @@ function SourceLibraryPicker({
                 {bank.name}
               </span>
             <span className="mt-3 text-sm font-semibold text-sky-800">
-              {bank.assignmentReadyCount} assignment-ready
+              {translate(locale, "assignment.assignmentReadyCount", {
+                count: formatNumber(locale, bank.assignmentReadyCount),
+              })}
             </span>
           </Link>
         ))}
@@ -158,6 +166,7 @@ function PublishFilters({
   classroomId,
   contentStats,
   difficulty,
+  locale,
   query,
   questionType,
   selection,
@@ -168,6 +177,7 @@ function PublishFilters({
   classroomId?: string;
   contentStats: PublishContentSummary;
   difficulty: PublishDifficultyFilter;
+  locale: Locale;
   query: string;
   questionType: string;
   selection?: string;
@@ -188,11 +198,13 @@ function PublishFilters({
             <Filter aria-hidden="true" className="size-5" />
           </span>
           <span className="block font-bold text-slate-950">
-            Filter questions
+            {translate(locale, "assignment.filterQuestions")}
           </span>
         </span>
         <span className="rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-xs font-semibold text-slate-700">
-          {hasActiveFilters ? "Applied" : "Optional"}
+          {hasActiveFilters
+            ? translate(locale, "assignment.applied")
+            : translate(locale, "assignment.optional")}
         </span>
       </summary>
       <div className="border-t border-slate-100 p-5">
@@ -207,7 +219,7 @@ function PublishFilters({
           ) : null}
           <div className="lg:col-span-2">
             <Label className="sr-only" htmlFor="q">
-              Search content
+              {translate(locale, "assignment.searchContent")}
             </Label>
             <div className="relative">
               <Search
@@ -219,13 +231,13 @@ function PublishFilters({
                 defaultValue={query}
                 id="q"
                 name="q"
-                placeholder="Search title, code, type, or Blueprint"
+                placeholder={translate(locale, "assignment.searchPlaceholder")}
               />
             </div>
           </div>
           <div>
             <Label className="sr-only" htmlFor="questionType">
-              Question type
+              {translate(locale, "assignment.questionType")}
             </Label>
             <select
               className="h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm shadow-sm"
@@ -233,17 +245,17 @@ function PublishFilters({
               id="questionType"
               name="questionType"
             >
-              <option value="">All types</option>
+              <option value="">{translate(locale, "assignment.allTypes")}</option>
               {contentStats.questionTypeCounts.map((item) => (
                 <option key={item.questionType} value={item.questionType}>
-                  {item.questionType} ({item.count})
+                  {item.questionType} ({formatNumber(locale, item.count)})
                 </option>
               ))}
             </select>
           </div>
           <div>
             <Label className="sr-only" htmlFor="difficulty">
-              Difficulty
+              {translate(locale, "assignment.difficulty")}
             </Label>
             <select
               className="h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm shadow-sm"
@@ -251,19 +263,23 @@ function PublishFilters({
               id="difficulty"
               name="difficulty"
             >
-              <option value="all">All difficulty</option>
-              <option value="foundational">Foundational</option>
-              <option value="practice">Practice</option>
-              <option value="challenge">Challenge</option>
+              <option value="all">{translate(locale, "assignment.allDifficulty")}</option>
+              <option value="foundational">
+                {translate(locale, "assignment.foundational")}
+              </option>
+              <option value="practice">
+                {translate(locale, "assignment.practiceDifficulty")}
+              </option>
+              <option value="challenge">{translate(locale, "assignment.challenge")}</option>
             </select>
           </div>
           <Button className="w-full" type="submit" variant="outline">
-            Apply filters
+            {translate(locale, "assignment.applyFilters")}
           </Button>
           {contentStats.blueprintSources.length ? (
             <div className="lg:col-span-5">
               <Label className="text-xs font-semibold uppercase tracking-wide text-slate-500" htmlFor="blueprintId">
-                Blueprint source
+                {translate(locale, "assignment.blueprintSource")}
               </Label>
               <select
                 className="mt-1 h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm shadow-sm"
@@ -271,13 +287,15 @@ function PublishFilters({
                 id="blueprintId"
                 name="blueprintId"
               >
-                <option value="">All approved Blueprint-generated Library questions</option>
+                <option value="">
+                  {translate(locale, "assignment.allBlueprintQuestions")}
+                </option>
                 {contentStats.blueprintSources.map((source) => (
                   <option
                     key={source.blueprintId ?? source.blueprintTitle}
                     value={source.blueprintId ?? ""}
                   >
-                    {source.blueprintTitle} ({source.count})
+                    {source.blueprintTitle} ({formatNumber(locale, source.count)})
                   </option>
                 ))}
               </select>
@@ -292,28 +310,30 @@ function PublishFilters({
 function QuestionChecklist({
   bankId,
   defaultSelectedIds,
+  locale,
   questions,
   selectedSource,
   totalReadyCount,
 }: {
   bankId: string;
   defaultSelectedIds: Set<string>;
+  locale: Locale;
   questions: PublishableBankQuestion[];
   selectedSource: PublishSourceType;
   totalReadyCount: number;
 }) {
   const emptyTitle =
     selectedSource === "blueprint"
-      ? "No approved Blueprint-generated Library questions match these filters."
+      ? translate(locale, "assignment.noBlueprintQuestions")
       : selectedSource === "package"
-        ? "Package publishing is not assignment-ready yet."
-        : "No assignment-ready questions match these filters.";
+        ? translate(locale, "assignment.noPackageQuestions")
+        : translate(locale, "assignment.noReadyQuestions");
   const emptyCopy =
     selectedSource === "blueprint"
-      ? "Blueprint rows are not directly assignable. Generate questions from an approved Blueprint, send them through Review Drafts, approve them into this Library, then return here."
+      ? translate(locale, "assignment.noBlueprintQuestionsDescription")
       : selectedSource === "package"
-        ? "Package sources are visible for workflow clarity, but only approved Library questions can be assigned in this PR."
-        : "Assignments cannot deliver raw AI drafts or unreviewed material. Approve usable Library Review Drafts, then return here.";
+        ? translate(locale, "assignment.noPackageQuestionsDescription")
+        : translate(locale, "assignment.noReadyQuestionsDescription");
 
   return (
     <section
@@ -325,7 +345,7 @@ function QuestionChecklist({
         <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
           <div>
             <h2 className="text-xl font-bold text-slate-950">
-              Questions
+              {translate(locale, "assignment.questions")}
             </h2>
           </div>
           <div className="flex flex-wrap items-center gap-2">
@@ -334,7 +354,10 @@ function QuestionChecklist({
               inputName="bankQuestionIds"
             />
             <span className="rounded-full border border-blue-200 bg-blue-50 px-3 py-1 text-sm font-semibold text-blue-800">
-              {questions.length} visible / {totalReadyCount} ready
+              {translate(locale, "assignment.visibleReady", {
+                ready: formatNumber(locale, totalReadyCount),
+                visible: formatNumber(locale, questions.length),
+              })}
             </span>
           </div>
         </div>
@@ -387,7 +410,9 @@ function QuestionChecklist({
         </div>
       ) : (
         <div className="p-8 text-center">
-          <p className="teacher-eyebrow">Nothing selectable</p>
+          <p className="teacher-eyebrow">
+            {translate(locale, "assignment.nothingSelectable")}
+          </p>
           <h3 className="mt-2 text-xl font-bold text-slate-950">
             {emptyTitle}
           </h3>
@@ -397,7 +422,7 @@ function QuestionChecklist({
           {selectedSource !== "package" ? (
             <Button asChild className="mt-5" variant="outline">
               <Link href={`/teacher/banks/${bankId}/review`}>
-                Open Library Review Drafts
+                {translate(locale, "assignment.openLibraryReviewDrafts")}
               </Link>
             </Button>
           ) : null}
@@ -409,16 +434,18 @@ function QuestionChecklist({
 
 function ClassroomTargets({
   classrooms,
+  locale,
   preselectedClassroomId,
 }: {
   classrooms: TeacherClassroomChoice[];
+  locale: Locale;
   preselectedClassroomId?: string;
 }) {
   return (
     <section className="teacher-panel overflow-hidden">
       <div className="border-b border-slate-100 p-5">
         <h2 className="text-xl font-bold text-slate-950">
-          Classroom
+          {translate(locale, "assignment.classroom")}
         </h2>
       </div>
 
@@ -442,7 +469,7 @@ function ClassroomTargets({
                   {classroom.name}
                 </span>
                 <span className="mt-1 block text-sm text-slate-600">
-                  {classroom.subject || "No subject set"}
+                  {classroom.subject || translate(locale, "classrooms.noSubject")}
                 </span>
               </span>
             </label>
@@ -450,16 +477,19 @@ function ClassroomTargets({
         </div>
       ) : (
         <div className="p-8 text-center">
-          <p className="teacher-eyebrow">No classrooms yet</p>
+          <p className="teacher-eyebrow">
+            {translate(locale, "teacher.progressNoClassrooms")}
+          </p>
           <h3 className="mt-2 text-xl font-bold text-slate-950">
-            Create a class before publishing.
+            {translate(locale, "assignment.createClassBeforePublishing")}
           </h3>
           <p className="mx-auto mt-2 max-w-2xl text-sm leading-6 text-slate-600">
-            Classrooms are roster and delivery spaces. They receive selected
-            Library items through Assignments.
+            {translate(locale, "assignment.classroomDeliveryDescription")}
           </p>
           <Button asChild className="mt-5" variant="outline">
-            <Link href="/teacher/classrooms">Open classrooms</Link>
+            <Link href="/teacher/classrooms">
+              {translate(locale, "teacher.progressOpenClassrooms")}
+            </Link>
           </Button>
         </div>
       )}
@@ -470,8 +500,11 @@ function ClassroomTargets({
 export default async function TeacherPublishPage({
   searchParams,
 }: TeacherPublishPageProps) {
-  const profile = await requireTeacher();
-  const query = await searchParams;
+  const [profile, locale, query] = await Promise.all([
+    requireTeacher(),
+    getRequestLocale(),
+    searchParams,
+  ]);
   const supabase = await createClient();
   let banks: TeacherQuestionBankSummary[] = [];
   let classrooms: TeacherClassroomChoice[] = [];
@@ -494,7 +527,7 @@ export default async function TeacherPublishPage({
 
   if (dataError) {
     if (dataError instanceof QuestionBankSchemaMissingError) {
-      return <SetupNeededState />;
+      return <SetupNeededState locale={locale} />;
     }
 
     throw dataError;
@@ -517,7 +550,7 @@ export default async function TeacherPublishPage({
       });
     } catch (error) {
       if (error instanceof QuestionBankSchemaMissingError) {
-        return <SetupNeededState />;
+        return <SetupNeededState locale={locale} />;
       }
 
       throw error;
@@ -555,17 +588,23 @@ export default async function TeacherPublishPage({
 
   return (
     <TeacherWorkspaceShell
-      eyebrow="Teacher assignment workflow"
-      title={selectedBank ? "Create Assignment" : "Choose Assignment source"}
+      eyebrow={translate(locale, "assignment.workflowEyebrow")}
+      title={
+        selectedBank
+          ? translate(locale, "assignment.createTitle")
+          : translate(locale, "assignment.chooseSourceTitle")
+      }
       description={
         selectedBank
-          ? "Select reviewed Library questions, choose classroom delivery, then assign now or save a teacher-only draft."
-          : "Start with one Library you own or edit. The next page focuses only on creating the Assignment."
+          ? translate(locale, "assignment.createDescription")
+          : translate(locale, "assignment.chooseSourceDescription")
       }
       actions={
         <Button asChild variant="outline">
           <Link href={selectedBank ? "/teacher/publish" : "/teacher/banks"}>
-            {selectedBank ? "Change Library" : "Open Libraries"}
+            {selectedBank
+              ? translate(locale, "assignment.changeLibrary")
+              : translate(locale, "teacher.openLibraries")}
           </Link>
         </Button>
       }
@@ -575,7 +614,7 @@ export default async function TeacherPublishPage({
           className="rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-semibold text-emerald-800"
           role="status"
         >
-          {query.saved}
+          {translate(locale, "common.saved")}
         </p>
       ) : null}
       {query.error ? (
@@ -585,26 +624,29 @@ export default async function TeacherPublishPage({
           role="alert"
           tabIndex={-1}
         >
-          {query.error}
+          {translate(locale, "common.requestFailed")}
         </p>
       ) : null}
 
       {!banks.length ? (
         <section className="teacher-panel p-8 text-center">
-          <p className="teacher-eyebrow">No manageable source Libraries</p>
+          <p className="teacher-eyebrow">
+            {translate(locale, "assignment.noManageableLibraries")}
+          </p>
           <h2 className="mt-2 text-xl font-bold text-slate-950">
-            Create a Library or request editor access.
+            {translate(locale, "assignment.createLibraryOrRequestAccess")}
           </h2>
           <p className="mx-auto mt-2 max-w-2xl text-sm leading-6 text-slate-600">
-            Assignment delivery requires owner or editor access to reviewed
-            Library content. Viewer membership remains read-only.
+            {translate(locale, "assignment.manageableLibrariesDescription")}
           </p>
           <Button asChild className="mt-5">
-            <Link href="/teacher/banks/new">Create Library</Link>
+            <Link href="/teacher/banks/new">
+              {translate(locale, "teacher.createLibrary")}
+            </Link>
           </Button>
         </section>
       ) : !selectedBank ? (
-        <SourceLibraryPicker banks={banks} />
+        <SourceLibraryPicker banks={banks} locale={locale} />
       ) : (
         <>
           <section className="flex flex-col gap-4 border-y border-slate-200 bg-white p-5 lg:flex-row lg:items-center lg:justify-between">
@@ -613,7 +655,9 @@ export default async function TeacherPublishPage({
                 {selectedBank.name}
               </h2>
               <p className="mt-1 text-sm text-slate-600">
-                {selectedBank.assignmentReadyCount} Ready
+                {translate(locale, "assignment.readyCount", {
+                  count: formatNumber(locale, selectedBank.assignmentReadyCount),
+                })}
               </p>
             </div>
             <div className="flex flex-wrap gap-2">
@@ -630,7 +674,7 @@ export default async function TeacherPublishPage({
                     sourceBankId: selectedBankId,
                   })}
                 >
-                  All reviewed questions
+                  {translate(locale, "assignment.allReviewedQuestions")}
                 </Link>
               </Button>
               {contentStats.blueprintApprovedCount ? (
@@ -649,7 +693,7 @@ export default async function TeacherPublishPage({
                       sourceBankId: selectedBankId,
                     })}
                   >
-                    Blueprint-generated only
+                  {translate(locale, "assignment.blueprintGeneratedOnly")}
                   </Link>
                 </Button>
               ) : null}
@@ -661,6 +705,7 @@ export default async function TeacherPublishPage({
             classroomId={query.classroomId}
             contentStats={contentStats}
             difficulty={difficulty}
+            locale={locale}
             query={searchQuery}
             questionType={questionType}
             selection={query.selection}
@@ -675,6 +720,7 @@ export default async function TeacherPublishPage({
                 <QuestionChecklist
                   bankId={selectedBankId}
                   defaultSelectedIds={selectedQuestionIds}
+                  locale={locale}
                   questions={visibleQuestions}
                   selectedSource={selectedSource}
                   totalReadyCount={totalReadyCount}
@@ -684,6 +730,7 @@ export default async function TeacherPublishPage({
               target={
                 <ClassroomTargets
                   classrooms={classrooms}
+                  locale={locale}
                   preselectedClassroomId={query.classroomId}
                 />
               }
@@ -695,7 +742,7 @@ export default async function TeacherPublishPage({
                       </span>
                       <div>
                         <h2 className="text-lg font-bold text-slate-950">
-                          Assignment details
+                          {translate(locale, "assignment.details")}
                         </h2>
                       </div>
                     </div>
@@ -703,9 +750,9 @@ export default async function TeacherPublishPage({
                       <AssignmentSelectionSummary
                         bankId={selectedBankId}
                         formId="publish-center-form"
-                        helperText="Return to Content if you need to change the reviewed questions."
+                        helperText={translate(locale, "assignment.selectionHelper")}
                         inputName="bankQuestionIds"
-                        totalLabel="visible assignment-ready question(s)."
+                        totalLabel={translate(locale, "assignment.visibleReadyTotal")}
                         totalQuestions={visibleQuestions.length}
                         versions={Object.fromEntries(
                           visibleQuestions.map((row) => [

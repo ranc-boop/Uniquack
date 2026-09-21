@@ -172,17 +172,45 @@ export function BankRouteTabs({
   currentUserRole: "editor" | "owner" | "viewer" | null;
 }) {
   const primaryTabs: BankContextNavItem[] = [
-    { href: `/teacher/banks/${bankId}/questions`, icon: "questions", label: "Questions" },
-    { href: `/teacher/banks/${bankId}/review`, icon: "review", label: "Review" },
+    {
+      href: `/teacher/banks/${bankId}/questions`,
+      icon: "questions",
+      labelKey: "teacherLibrary.questions",
+    },
+    {
+      href: `/teacher/banks/${bankId}/review`,
+      icon: "review",
+      labelKey: "teacherLibrary.review",
+    },
     ...(currentUserRole === "owner" || currentUserRole === "editor"
-      ? [{ href: `/teacher/banks/${bankId}/imports`, icon: "import" as const, label: "Import" }]
+      ? [{
+          href: `/teacher/banks/${bankId}/imports`,
+          icon: "import" as const,
+          labelKey: "teacherLibrary.import" as const,
+        }]
       : []),
   ];
   const secondaryTabs: BankContextNavItem[] = [
-    { href: `/teacher/banks/${bankId}/submissions`, icon: "public-submissions", label: "Public Submissions" },
-    { href: `/teacher/banks/${bankId}/blueprints`, icon: "blueprints", label: "Blueprints" },
-    { href: `/teacher/banks/${bankId}/members`, icon: "members", label: "Members" },
-    { href: `/teacher/banks/${bankId}/sources`, icon: "sources", label: "Sources" },
+    {
+      href: `/teacher/banks/${bankId}/submissions`,
+      icon: "public-submissions",
+      labelKey: "teacherLibrary.publicSubmissions",
+    },
+    {
+      href: `/teacher/banks/${bankId}/blueprints`,
+      icon: "blueprints",
+      labelKey: "teacherLibrary.blueprints",
+    },
+    {
+      href: `/teacher/banks/${bankId}/members`,
+      icon: "members",
+      labelKey: "teacherLibrary.members",
+    },
+    {
+      href: `/teacher/banks/${bankId}/sources`,
+      icon: "sources",
+      labelKey: "teacherLibrary.sources",
+    },
   ];
 
   return (

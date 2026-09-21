@@ -95,7 +95,7 @@ assert(
     burstUpload.includes("uploadToSignedUrl") &&
     importsPage.includes("TeacherPdfBurstUpload") &&
     importsPage.includes('["manual", "json", "ai"]') &&
-    importsPage.includes("Review is required before assignment") &&
+    importsPage.includes('t("teacherLibrary.reviewGateNotice")') &&
     !importsPage.includes("/admin/imports/pdf") &&
     !importsPage.includes("apiKey") &&
     !importsPage.includes("api_key"),
@@ -110,10 +110,9 @@ assert(
     routeSource: previewRoute,
     serviceSource: previewService,
     urlSource: questionAssetUrl,
-  }) &&
+    }) &&
     reviewPage.includes("approveBankReviewQuestion") &&
-    reviewPage.includes("Approval confirms these questions for this Library") &&
-    reviewPage.includes("you did not preview remains your responsibility") &&
+    reviewPage.includes('t("teacherLibrary.approvalResponsibility")') &&
     !reviewPage.includes("published_at"),
   "AI-created drafts must hand off through the authenticated, bank-scoped lazy Review preview and protected asset route.",
 );

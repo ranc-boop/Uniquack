@@ -173,11 +173,11 @@ async function runSourceSmoke() {
   );
 
   assert(
-    reviewPage.includes("Generated from Blueprint") &&
-      reviewPage.includes("Open source Blueprint") &&
-      reviewPage.includes("reviewItemPayload") &&
-      reviewPage.includes("Approval adds this question") &&
-      reviewPage.includes("not globally published"),
+    reviewPage.includes("LazyTeacherQuestionPreview") &&
+      reviewPage.includes("TeacherReviewGuidance") &&
+      reviewPage.includes("reviewItemId") &&
+      reviewPage.includes('t("teacherLibrary.approvalResponsibility")') &&
+      reviewPage.includes('kind="review"'),
     "bank Review Draft page must show Blueprint lineage and keep bank approval boundary copy",
   );
 

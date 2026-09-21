@@ -9,6 +9,9 @@ import {
 } from "@/app/teacher/classrooms/classroom-ui";
 import { Button } from "@/components/ui/button";
 import { requireTeacher } from "@/lib/auth/guards";
+import { formatNumber } from "@/lib/i18n/locale";
+import { getRequestLocale } from "@/lib/i18n/server";
+import { translate, type MessageKey } from "@/lib/i18n/messages";
 import { createClient } from "@/lib/supabase/server";
 import { getTeacherClassroomWorkspace } from "@/lib/teacher-classrooms";
 
@@ -18,17 +21,13 @@ type ClassroomBlueprintsPageProps = {
   params: Promise<{ id: string }>;
 };
 
-function sourceKindLabel(kind: string) {
-  if (kind === "question_bank") return "Library";
-  if (kind === "course_builder_run") return "Course Builder";
-  if (kind === "practice_framework") return "Practice framework";
-  return "Manual";
-}
-
 export default async function ClassroomBlueprintsPage({
   params,
 }: ClassroomBlueprintsPageProps) {
   await requireTeacher();
+  const locale = await getRequestLocale();
+  const t = (key: MessageKey, values?: Record<string, number | string>) =>
+    translate(locale, key, values);
   const { id } = await params;
   const supabase = await createClient();
   const workspace = await getTeacherClassroomWorkspace({
@@ -50,18 +49,16 @@ export default async function ClassroomBlueprintsPage({
       <section className="teacher-hero">
         <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
           <div className="space-y-2">
-            <p className="teacher-eyebrow">Linked Blueprints</p>
+            <p className="teacher-eyebrow">{t("classroomBlueprints.title")}</p>
             <h1 className="break-words text-3xl font-bold tracking-tight text-slate-950">
               {classroom.name}
             </h1>
             <p className="max-w-3xl text-base leading-7 text-slate-600">
-              Blueprint planning context sits above classroom delivery. This
-              view shows available bank-linked context without generating
-              questions or delivering blueprints directly to students.
+              {t("classroomBlueprints.description")}
             </p>
           </div>
           <Button asChild>
-            <Link href="/teacher/blueprints">Open Blueprint Library</Link>
+            <Link href="/teacher/blueprints">{t("classroomBlueprints.openLibrary")}</Link>
           </Button>
         </div>
       </section>
@@ -69,37 +66,36 @@ export default async function ClassroomBlueprintsPage({
       <ClassroomRouteTabs classroomId={classroom.id} />
       <section className="grid gap-3 md:grid-cols-3">
         <ClassroomMetricCard
-          description="Blueprints connected through assigned Library content when available."
+          description={t("classroomBlueprints.linkedDescription")}
           icon={Sparkles}
-          label="Linked blueprints"
+          label={t("classroomBlueprints.linked")}
           value={
             classroom.linkedBlueprintCount === null
-              ? "Planned"
-              : classroom.linkedBlueprintCount
+              ? t("classroom.blueprintsPlanned")
+              : formatNumber(locale, classroom.linkedBlueprintCount)
           }
         />
         <ClassroomMetricCard
-          description="Assignments carrying Library lineage."
+          description={t("classroomBlueprints.libraryAssignmentsDescription")}
           icon={ClipboardCheck}
-          label="Library-sourced assignments"
-          value={bankLinkedAssignments.length}
+          label={t("classroomBlueprints.libraryAssignments")}
+          value={formatNumber(locale, bankLinkedAssignments.length)}
         />
         <ClassroomMetricCard
-          description="All delivery events for this class."
+          description={t("classroomBlueprints.allAssignmentsDescription")}
           icon={ClipboardCheck}
-          label="All assignments"
-          value={assignments.length}
+          label={t("classroom.allAssignments")}
+          value={formatNumber(locale, assignments.length)}
         />
       </section>
 
       <section className="teacher-panel overflow-hidden">
         <div className="border-b border-slate-200 bg-white/70 p-5">
           <h2 className="text-xl font-bold text-slate-950">
-            Planning context for this class
+            {t("classroomBlueprints.planningContext")}
           </h2>
           <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-600">
-            Blueprints are library assets used to organize plans before
-            publishing. They are not sent directly to students from this page.
+            {t("classroomBlueprints.planningDescription")}
           </p>
         </div>
         {bankLinkedAssignments.length ? (
@@ -114,20 +110,35 @@ export default async function ClassroomBlueprintsPage({
                   <div className="min-w-0 space-y-2">
                     <div className="flex flex-wrap items-center gap-2">
                       <ClassroomBadge tone="blue">
-                        {sourceKindLabel(assignment.source_kind)}
+                        {assignment.source_kind === "question_bank"
+                          ? t("assignmentDetail.library")
+                          : assignment.source_kind === "course_builder_run"
+                            ? t("assignmentDetail.courseBuilderRun")
+                            : assignment.source_kind === "practice_framework"
+                              ? t("assignmentDetail.practiceFramework")
+                              : t("assignmentDetail.manual")}
                       </ClassroomBadge>
-                      <ClassroomBadge>{assignment.status}</ClassroomBadge>
+                      <ClassroomBadge>
+                        {assignment.status === "assigned"
+                          ? t("classroom.assignmentStatusAssigned")
+                          : assignment.status === "draft"
+                            ? t("classroom.assignmentStatusDraft")
+                            : assignment.status === "archived"
+                              ? t("classroom.assignmentStatusArchived")
+                              : t("classroom.assignmentStatusUnknown")}
+                      </ClassroomBadge>
                     </div>
                     <h3 className="break-words text-base font-bold text-slate-950">
                       {assignment.title}
                     </h3>
                     <p className="text-sm leading-6 text-slate-600">
-                      {assignment.itemCount} selected bank item(s). Open the
-                      assignment to inspect source lineage.
+                      {t("classroomBlueprints.selectedItems", {
+                        count: formatNumber(locale, assignment.itemCount),
+                      })}
                     </p>
                   </div>
                   <span className="text-sm font-semibold text-sky-700">
-                    Open assignment
+                    {t("classroomBlueprints.openAssignment")}
                   </span>
                 </div>
               </Link>
@@ -135,17 +146,15 @@ export default async function ClassroomBlueprintsPage({
           </div>
         ) : (
           <div className="p-8 text-center">
-            <p className="teacher-eyebrow">No linked blueprints yet</p>
+            <p className="teacher-eyebrow">{t("classroomBlueprints.noLinked")}</p>
             <h3 className="mt-2 text-xl font-bold text-slate-950">
-              Blueprints linked to this class will appear here.
+              {t("classroomBlueprints.noLinkedTitle")}
             </h3>
             <p className="mx-auto mt-2 max-w-2xl text-sm leading-6 text-slate-600">
-              Use Blueprint Library to organize plans before publishing. Class
-              links can be introduced through bank-linked assignments without
-              exposing source Libraries to students.
+              {t("classroomBlueprints.noLinkedDescription")}
             </p>
             <Button asChild className="mt-5" variant="outline">
-              <Link href="/teacher/blueprints">Open Blueprint Library</Link>
+              <Link href="/teacher/blueprints">{t("classroomBlueprints.openLibrary")}</Link>
             </Button>
           </div>
         )}

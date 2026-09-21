@@ -18,6 +18,7 @@
     "lint:math-content": "node scripts/check-math-content-usage.mjs",
     "lint:question-assets-public-url": "node scripts/check-question-assets-public-url.mjs",
     "smoke": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/smoke-all.mjs",
+    "smoke:i18n": "node scripts/i18n-route-smoke.mjs",
     "smoke:local-ai-worker": "node scripts/local-ai-jobs-worker-smoke.mjs",
     "smoke:practice-thread-cache": "node scripts/practice-thread-cache-refactor-smoke.mjs",
     "smoke:practice-library-finish": "node scripts/practice-library-scope-finish-smoke.mjs",

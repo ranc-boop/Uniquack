@@ -15,6 +15,10 @@ function assert(condition, message) {
   if (!condition) throw new Error(message);
 }
 
+function usesMessageKeys(source, ...keys) {
+  return keys.every((key) => source.includes(`"${key}"`));
+}
+
 async function collectRouteFiles(directory, prefix = "") {
   const entries = await readdir(directory, { withFileTypes: true });
   const files = [];
@@ -148,7 +152,7 @@ assert(
     practiceClient.includes("sessionHistoryLoading") &&
     practiceClient.includes("restoreActive: false") &&
     practicePanels.includes("PracticeSessionListLoading") &&
-    practicePanels.includes("Loading available question sources"),
+    usesMessageKeys(practicePanels, "practice.loadingSources"),
   "Practice must show a usable fresh-session shell while secondary data hydrates",
 );
 assert(

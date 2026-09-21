@@ -10,6 +10,10 @@ function assert(condition, message) {
   if (!condition) throw new Error(message);
 }
 
+function usesMessageKeys(source, ...keys) {
+  return keys.every((key) => source.includes(`"${key}"`));
+}
+
 async function read(relativePath) {
   return readFile(resolve(root, relativePath), "utf8");
 }
@@ -26,12 +30,15 @@ const [page, helper, dashboardPanels, classroomAnalytics, smokeAll, migrations] 
 
 assert(
     page.includes("getTeacherProgressSummary") &&
-    page.includes("Progress / Feedback") &&
-    page.includes("Active assignments") &&
-    page.includes("Completion rate") &&
-    page.includes("Students needing attention") &&
-    page.includes("Recent evidence") &&
-    page.includes("All Assignment progress") &&
+    usesMessageKeys(
+      page,
+      "teacher.progressTitle",
+      "teacher.progressActiveAssignments",
+      "teacher.progressCompletionRate",
+      "teacher.progressStudentsNeedingAttention",
+      "teacher.progressRecentEvidence",
+      "teacher.progressAllAssignmentProgress",
+    ) &&
     !page.includes("TeacherComingSoonPanel") &&
     !page.includes("Evidence and progress shell"),
   "/teacher/progress must render the real evidence dashboard instead of the old module shell",
@@ -67,20 +74,18 @@ assert(
 );
 
 assert(
-  page.includes("Evidence is limited to classroom Assignments") &&
-    page.includes("Private self-study") &&
-    page.includes("source Libraries stay outside") &&
+  usesMessageKeys(page, "teacher.progressEvidenceBoundary") &&
     !page.includes("Teacher feedback notes are coming later") &&
     !page.includes("/teacher/banks/"),
   "teacher progress page must state assignment evidence privacy boundaries without source-bank links",
 );
 
 assert(
-  page.includes("Open assignment detail") &&
+  usesMessageKeys(page, "teacher.progressOpenAssignmentDetail") &&
     page.includes("/assignments/${assignment.assignmentId}") &&
     dashboardPanels.includes('href: "/teacher/progress"') &&
     classroomAnalytics.includes('href="/teacher/progress"') &&
-    classroomAnalytics.includes("All progress"),
+    classroomAnalytics.includes('t("classroomAnalytics.allProgress")'),
   "teacher dashboard, classroom analytics, and progress rows must link into the evidence workflow",
 );
 

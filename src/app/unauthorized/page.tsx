@@ -2,28 +2,30 @@ import Link from "next/link";
 
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { translate } from "@/lib/i18n/messages";
+import { getRequestLocale } from "@/lib/i18n/server";
 
-export default function UnauthorizedPage() {
+export default async function UnauthorizedPage() {
+  const locale = await getRequestLocale();
+
   return (
     <Card className="max-w-xl">
       <CardHeader>
-        <CardTitle>Access denied</CardTitle>
+        <CardTitle>{translate(locale, "unauthorized.title")}</CardTitle>
       </CardHeader>
       <CardContent className="space-y-4">
         <p className="text-sm text-muted-foreground">
-          Your account is signed in, but this area requires a higher role. Admin
-          pages require admin or super_admin, and user role management requires
-          super_admin.
+          {translate(locale, "unauthorized.description")}
         </p>
         <div className="flex flex-wrap gap-2">
           <Button asChild>
-            <Link href="/">Back home</Link>
+            <Link href="/">{translate(locale, "unauthorized.backHome")}</Link>
           </Button>
           <Button asChild variant="outline">
-            <Link href="/questions">View public questions</Link>
+            <Link href="/questions">{translate(locale, "unauthorized.publicQuestions")}</Link>
           </Button>
           <Button asChild variant="secondary">
-            <Link href="/auth/login">Sign in as another user</Link>
+            <Link href="/auth/login">{translate(locale, "unauthorized.signInAnother")}</Link>
           </Button>
         </div>
       </CardContent>
