@@ -21,7 +21,7 @@ function safeNextPath(value: FormDataEntryValue | null) {
 
 export async function signInWithUsername(formData: FormData) {
   if (!isSupabaseConfigured()) {
-    redirect("/auth/login?error=Supabase%20environment%20is%20not%20configured");
+    redirect("/auth/login?error=environment_not_configured");
   }
 
   const username = String(formData.get("username") ?? "");
@@ -30,7 +30,7 @@ export async function signInWithUsername(formData: FormData) {
   const email = usernameToLocalEmail(username);
 
   if (!email || !password) {
-    redirect("/auth/login?error=Username%20and%20password%20are%20required");
+    redirect("/auth/login?error=credentials_required");
   }
 
   const supabase = await createClient();
@@ -40,7 +40,7 @@ export async function signInWithUsername(formData: FormData) {
   });
 
   if (error) {
-    redirect(`/auth/login?error=${encodeURIComponent(error.message)}`);
+    redirect("/auth/login?error=invalid_credentials");
   }
 
   if (next) {

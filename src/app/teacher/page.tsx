@@ -9,13 +9,31 @@ import { TeacherPendingLink } from "@/components/teacher/teacher-pending-link";
 import { buttonVariants } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { requireTeacher } from "@/lib/auth/guards";
+import { translate, type MessageKey } from "@/lib/i18n/messages";
+import { getRequestLocale } from "@/lib/i18n/server";
 import { createClient } from "@/lib/supabase/server";
 import { getTeacherHomeSummary } from "@/lib/teacher-dashboard";
 
 export const dynamic = "force-dynamic";
 
+const teacherActionMessageKeys: Record<string, MessageKey> = {
+  "Create assignment": "teacher.createAssignment",
+  "Create Library": "teacher.createLibrary",
+  "Create your first Library": "teacher.createFirstLibrary",
+  Import: "teacher.import",
+  "Libraries unavailable": "teacher.librariesUnavailable",
+  "Open Libraries": "teacher.openLibraries",
+  Review: "teacher.review",
+};
+
+function localizedTeacherAction(locale: "en" | "zh-CN", label: string) {
+  const key = teacherActionMessageKeys[label];
+  return key ? translate(locale, key) : label;
+}
+
 export default async function TeacherHomePage() {
-  const profile = await requireTeacher();
+  const [profile, locale] = await Promise.all([requireTeacher(), getRequestLocale()]);
+  const t = (key: MessageKey, values?: Record<string, number | string>) => translate(locale, key, values);
   const supabase = await createClient();
   const summary = await getTeacherHomeSummary({
     profileId: profile.id,
@@ -25,26 +43,28 @@ export default async function TeacherHomePage() {
     summary.nextAction.count === null
       ? null
       : summary.nextAction.label === "Review"
-        ? `${summary.nextAction.count} drafts`
-        : `${summary.nextAction.count} ready questions`;
+        ? t("teacher.drafts", { count: summary.nextAction.count })
+        : t("teacher.readyQuestions", { count: summary.nextAction.count });
+  const nextActionLabel = localizedTeacherAction(locale, summary.nextAction.label);
+  const nextActionTitle = localizedTeacherAction(locale, summary.nextAction.title);
   const shortcuts = [
     {
       count: summary.libraryCount,
       href: "/teacher/banks",
       icon: BookOpen,
-      label: "Libraries",
+      label: t("teacher.libraries"),
     },
     {
       count: null,
       href: "/teacher/publish",
       icon: ClipboardList,
-      label: "Assignments",
+      label: t("teacher.assignments"),
     },
     {
       count: null,
       href: "/teacher/progress",
       icon: TrendingUp,
-      label: "Progress",
+      label: t("teacher.progress"),
     },
   ];
 
@@ -52,16 +72,16 @@ export default async function TeacherHomePage() {
     <div className="teacher-shell min-h-dvh space-y-8">
       <header className="flex items-center justify-between gap-4">
         <h1 className="text-3xl font-semibold tracking-[-0.03em] text-[#1D1D1F]">
-          Teacher
+          {t("teacher.title")}
         </h1>
       </header>
 
       <section className="overflow-hidden rounded-xl border border-slate-200 bg-white">
         <div className="flex flex-col gap-8 px-6 py-8 md:px-8 md:py-10 lg:flex-row lg:items-end lg:justify-between">
           <div className="min-w-0">
-            <h2 className="text-sm font-semibold text-slate-500">Next action</h2>
+            <h2 className="text-sm font-semibold text-slate-500">{t("teacher.nextAction")}</h2>
             <p className="mt-3 break-words text-2xl font-bold tracking-tight text-slate-950 md:text-3xl">
-              {summary.nextAction.title}
+              {nextActionTitle}
             </p>
             {actionCountLabel ? (
               <p className="mt-2 text-base font-medium text-slate-600">
@@ -72,16 +92,16 @@ export default async function TeacherHomePage() {
           <TeacherPendingLink
             className={cn(buttonVariants(), "min-h-11 shrink-0")}
             href={summary.nextAction.href}
-            pendingLabel={summary.nextAction.label}
+            pendingLabel={nextActionLabel}
           >
-            {summary.nextAction.label}
+            {nextActionLabel}
             <ArrowRight aria-hidden="true" className="h-4 w-4" />
           </TeacherPendingLink>
         </div>
       </section>
 
       <nav
-        aria-label="Teacher shortcuts"
+        aria-label={t("teacher.shortcuts")}
         className="grid overflow-hidden rounded-xl border border-slate-200 bg-white md:grid-cols-3 md:divide-x md:divide-slate-200"
       >
         {shortcuts.map(({ count, href, icon: Icon, label }) => (
@@ -110,7 +130,7 @@ export default async function TeacherHomePage() {
 
       {summary.setupNeeded ? (
         <p className="text-sm font-medium text-rose-700" role="alert">
-          Libraries are unavailable.
+          {t("teacher.librariesUnavailable")}
         </p>
       ) : null}
     </div>

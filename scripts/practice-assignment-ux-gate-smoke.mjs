@@ -3,7 +3,7 @@ import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
 
 const root = process.cwd();
-const [client, questionCard, completionPanel, assignmentHandoff] =
+const [client, questionCard, completionPanel, assignmentHandoff, questionPracticePanel] =
   await Promise.all([
   readFile(
     resolve(root, "src/components/practice/practice-agent-client.tsx"),
@@ -21,6 +21,10 @@ const [client, questionCard, completionPanel, assignmentHandoff] =
     resolve(root, "src/components/practice/practice-assignment-handoff.tsx"),
     "utf8",
   ),
+  readFile(
+    resolve(root, "src/components/practice/question-practice-panel.tsx"),
+    "utf8",
+  ),
   ]);
 
 function sourceBlock(source, start, end) {
@@ -29,6 +33,10 @@ function sourceBlock(source, start, end) {
   assert(startIndex >= 0, `missing source block start: ${start}`);
   assert(endIndex > startIndex, `missing source block end: ${end}`);
   return source.slice(startIndex, endIndex);
+}
+
+function usesMessageKeys(source, ...keys) {
+  return keys.every((key) => source.includes(`"${key}"`));
 }
 
 const sessionSwitch = sourceBlock(
@@ -92,25 +100,45 @@ assert(
 assert(
   client.includes("assignmentId={assignmentId}") &&
     client.includes("PracticeAssignmentHandoff") &&
-    assignmentHandoff.includes("Assignment round saved") &&
-    assignmentHandoff.includes("Practice evidence is already saved.") &&
+    usesMessageKeys(
+      assignmentHandoff,
+      "practice.assignmentRoundSaved",
+      "practice.chooseNextStep",
+      "practice.assignmentHandoffDescription",
+      "practice.reviewAssignment",
+      "practice.backToMyWork",
+    ) &&
     assignmentHandoff.includes('href="/student/work"') &&
-    completionPanel.includes("Review this Assignment") &&
+    usesMessageKeys(completionPanel, "practice.reviewAssignment") &&
     completionPanel.includes('href={assignmentId ? "/student/work" : "/student"}') &&
-    completionPanel.includes(
-      '{assignmentId ? "Back to My Work" : "Back to student workspace"}',
-    ),
+    usesMessageKeys(completionPanel, "practice.backToMyWork", "practice.backToStudentWorkspace"),
   "Assignment completion must return to the Assignment or My Work instead of starting an unrelated Library flow",
 );
 
 assert(
   answerInput.includes("<fieldset") &&
     answerInput.includes("<legend") &&
-    answerInput.includes("<Label htmlFor={answerControlId}>Your answer</Label>") &&
+    usesMessageKeys(answerInput, "practice.yourAnswer") &&
     answerInput.includes("aria-describedby={hasAnswerError ? answerErrorId : undefined}") &&
     answerInput.includes("aria-invalid={hasAnswerError || undefined}") &&
     questionCard.includes('role="heading"'),
   "Each answer control must have a programmatic question label, group semantics, and an associated error",
+);
+
+assert(
+  usesMessageKeys(
+    questionPracticePanel,
+    "practice.questionPracticeTitle",
+    "practice.questionPracticeDescription",
+    "practice.preparingQuestion",
+    "practice.yourAnswer",
+    "practice.submit",
+    "practice.tryAgain",
+    "practice.solutionUnavailable",
+  ) &&
+    questionPracticePanel.includes('setError(t("common.requestFailed"))') &&
+    !questionPracticePanel.includes("setError(caught instanceof Error"),
+  "Single-question Practice must localize its static controls and avoid exposing raw request errors",
 );
 
 assert(

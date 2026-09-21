@@ -103,8 +103,8 @@ async function runSourceSmoke() {
   assert(
     deniesViewerImportRoute(bankImportsPage) &&
       bankImportsPage.includes("canImport={canImport}") &&
-      bankImportsPage.includes("Review is required before assignment") &&
-      bankImportUi.includes("Recent AI Parsing status"),
+      bankImportsPage.includes('t("teacherLibrary.reviewGateNotice")') &&
+      bankImportsPage.includes('t("teacherLibrary.aiParsingStatus")'),
     "Library imports must fail closed for viewers before rendering owner/editor import controls.",
   );
 
@@ -123,7 +123,7 @@ async function runSourceSmoke() {
       bankImportsPage.includes("BankManualQuestionForm") &&
       bankImportsPage.includes("BatchImportJsonPanelLoader") &&
       bankImportsPage.includes("TeacherPdfBurstUpload") &&
-      bankImportsPage.includes("Review Drafts") &&
+      bankImportsPage.includes('t("teacherLibrary.reviewGateNotice")') &&
       !bankImportsPage.includes("/admin/imports/pdf") &&
       !bankImportsPage.includes("/admin/review"),
     "/teacher/banks/[bankId]/imports must keep Manual/JSON/AI bank-scoped and avoid admin/global handoffs",

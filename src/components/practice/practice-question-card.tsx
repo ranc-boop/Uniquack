@@ -6,6 +6,7 @@ import {
   QuestionText,
   SolutionText,
 } from "@/components/math-content";
+import { useLocale } from "@/components/i18n/locale-provider";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -23,7 +24,10 @@ function answerValue(answer: string | string[] | undefined) {
   return Array.isArray(answer) ? answer.join(", ") : answer ?? "";
 }
 
-function resultBadge(result: PracticeGradeResult | undefined) {
+function resultBadge(
+  result: PracticeGradeResult | undefined,
+  t: ReturnType<typeof useLocale>["t"],
+) {
   if (!result) return null;
   if (result.isCorrect === true) {
     return (
@@ -32,29 +36,29 @@ function resultBadge(result: PracticeGradeResult | undefined) {
         data-result="correct"
         data-testid="practice-result-badge"
       >
-        correct
+        {t("practice.correct")}
       </Badge>
     );
   }
   if (result.isCorrect === false) {
     return (
       <Badge data-result="incorrect" data-testid="practice-result-badge" variant="destructive">
-        incorrect
+        {t("practice.incorrect")}
       </Badge>
     );
   }
   return (
     <Badge data-result="manual-review" data-testid="practice-result-badge" variant="outline">
-      manual review
+      {t("practice.manualReview")}
     </Badge>
   );
 }
 
-function reviewingBadge() {
+function reviewingBadge(t: ReturnType<typeof useLocale>["t"]) {
   return (
     <Badge className="gap-1.5 border-sky-200 bg-sky-50 text-sky-800 hover:bg-sky-50" variant="outline">
       <span aria-hidden="true" className="loading-indicator-spinner size-3.5" />
-      Reviewing
+      {t("practice.reviewing")}
     </Badge>
   );
 }
@@ -78,10 +82,14 @@ function QuestionAnswerInput({
   onChange: (value: string | string[]) => void;
   question: PracticeRecommendation;
 }) {
+  const { formatNumber, t } = useLocale();
   const answerKey = practiceAnswerKey(question);
   const answerControlId = `practice-question-${index + 1}-answer`;
   const answerErrorId = `practice-question-${index + 1}-answer-error`;
-  const answerLabel = `Your answer for question ${index + 1}: ${question.title}`;
+  const answerLabel = t("practice.answerForQuestion", {
+    count: formatNumber(index + 1),
+    title: question.title,
+  });
   const control = question.questionType === "mcq" && question.options.length ? (
     <fieldset
       aria-describedby={hasAnswerError ? answerErrorId : undefined}
@@ -90,7 +98,7 @@ function QuestionAnswerInput({
     >
       <legend className="mb-2 text-sm font-semibold text-slate-900">
         <span className="sr-only">{answerLabel}. </span>
-        Choose one answer
+        {t("practice.chooseOneAnswer")}
       </legend>
       {question.options.map((option) => {
         const selected = Array.isArray(answer) ? answer.includes(option.id) : answer === option.id;
@@ -124,7 +132,7 @@ function QuestionAnswerInput({
     </fieldset>
   ) : (
     <div className="space-y-2">
-      <Label htmlFor={answerControlId}>Your answer</Label>
+      <Label htmlFor={answerControlId}>{t("practice.yourAnswer")}</Label>
       <Textarea
         aria-describedby={hasAnswerError ? answerErrorId : undefined}
         aria-invalid={hasAnswerError || undefined}
@@ -134,7 +142,7 @@ function QuestionAnswerInput({
         id={answerControlId}
         maxLength={PRACTICE_INPUT_LIMITS.ANSWER_CHARS}
         onChange={(event) => onChange(event.currentTarget.value)}
-        placeholder={question.questionType === "fill_blank" ? "Enter your final answer" : "Write your response"}
+        placeholder={question.questionType === "fill_blank" ? t("practice.finalAnswerPlaceholder") : t("practice.responsePlaceholder")}
         value={answerValue(answer)}
       />
     </div>
@@ -149,7 +157,7 @@ function QuestionAnswerInput({
       {control}
       {hasAnswerError ? (
         <p className="mt-2 text-sm font-semibold text-destructive" id={answerErrorId}>
-          Answer required for question {index + 1}.
+          {t("practice.answerRequired", { count: formatNumber(index + 1) })}
         </p>
       ) : null}
     </div>
@@ -157,16 +165,18 @@ function QuestionAnswerInput({
 }
 
 function QuestionReviewDiagnostic({ review }: { review?: PracticeQuestionReview }) {
+  const { t } = useLocale();
+
   if (!review) return null;
 
   const rows = [
-    ["Judgment", review.judgmentReason ?? review.observedError],
-    ["Solution key points", review.solutionKeyPoints],
-    ["Missing or extra", review.missingOrExtraParts],
-    ["Answer form", review.answerFormIssue],
-    ["Concept gap", review.conceptGap],
-    ["Personal pattern", review.personalizationLink],
-    ["Fix next", review.fixNext],
+    [t("practice.diagnosisJudgment"), review.judgmentReason ?? review.observedError],
+    [t("practice.diagnosisSolution"), review.solutionKeyPoints],
+    [t("practice.diagnosisMissing"), review.missingOrExtraParts],
+    [t("practice.diagnosisForm"), review.answerFormIssue],
+    [t("practice.diagnosisConcept"), review.conceptGap],
+    [t("practice.diagnosisPattern"), review.personalizationLink],
+    [t("practice.diagnosisFix"), review.fixNext],
   ].filter((row): row is [string, string] => Boolean(row[1]?.trim()));
 
   if (!rows.length) return null;
@@ -174,7 +184,7 @@ function QuestionReviewDiagnostic({ review }: { review?: PracticeQuestionReview 
   return (
     <div className="rounded-lg border border-sky-200 bg-sky-50/70 p-4">
       <div className="mb-3 flex flex-wrap items-center gap-2">
-        <p className="text-sm font-bold text-sky-950">Review diagnosis</p>
+        <p className="text-sm font-bold text-sky-950">{t("practice.diagnosis")}</p>
         {review.verdict ? (
           <Badge className="border-sky-200 bg-white text-sky-900 hover:bg-white" variant="outline">
             {review.verdict}
@@ -222,6 +232,7 @@ export function PracticeQuestionCard({
   result?: PracticeGradeResult;
   review?: PracticeQuestionReview;
 }) {
+  const { formatNumber, t } = useLocale();
   const answerKey = practiceAnswerKey(question);
   const questionRegionId = `practice-question-${index + 1}`;
   const questionTitleId = `${questionRegionId}-title`;
@@ -252,7 +263,7 @@ export function PracticeQuestionCard({
               </CardTitle>
             </div>
           </div>
-          {resultBadge(result) ?? (phase === "feedback" ? reviewingBadge() : null)}
+          {resultBadge(result, t) ?? (phase === "feedback" ? reviewingBadge(t) : null)}
         </div>
       </CardHeader>
       <CardContent className="space-y-4">
@@ -269,14 +280,14 @@ export function PracticeQuestionCard({
         />
         <div className="flex flex-wrap items-center gap-2">
           <Button disabled={isPending || phase === "feedback" || hints.length >= PRACTICE_INPUT_LIMITS.HINTS_PER_QUESTION} onClick={() => onHintRequest(question)} size="sm" type="button" variant="outline">
-            Hint
+            {t("practice.hint")}
           </Button>
         </div>
         {hints.length ? (
           <div className="space-y-2">
             {hints.map((hint, hintIndex) => (
               <div key={`${answerKey}-hint-${hintIndex}`} className="rounded-lg border border-sky-100 bg-sky-50/70 p-3 text-sm">
-                <span className="font-bold text-sky-900">Hint {hintIndex + 1}: </span>
+                <span className="font-bold text-sky-900">{t("practice.hintNumber", { count: formatNumber(hintIndex + 1) })}: </span>
                 <FeedbackText className="inline border-none bg-transparent p-0 text-sky-900/80" compact inline value={hint} />
               </div>
             ))}
@@ -284,7 +295,7 @@ export function PracticeQuestionCard({
         ) : null}
         <details className="border-t border-slate-100 pt-3 text-sm text-slate-500">
           <summary className="cursor-pointer font-medium text-slate-500 marker:text-slate-400 hover:text-slate-800">
-            Why this question?
+            {t("practice.questionReason")}
           </summary>
           <div className="mt-2 border-l-2 border-slate-200 pl-3">
             <FeedbackText className="border-none bg-transparent p-0 text-sm leading-6 text-slate-600" compact value={question.reason} />
@@ -297,7 +308,7 @@ export function PracticeQuestionCard({
             <QuestionReviewDiagnostic review={review} />
             {result.solutionHtml ? (
               <div className="space-y-2">
-                <p className="text-sm font-bold text-emerald-950">Solution</p>
+                <p className="text-sm font-bold text-emerald-950">{t("practice.solution")}</p>
                 <SolutionText value={result.solutionHtml} />
               </div>
             ) : null}

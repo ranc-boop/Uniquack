@@ -70,24 +70,22 @@ assert(
 );
 
 assert(
-  bankImportUi.includes("Recent AI Parsing status") &&
+  bankImportUi.includes('translate(locale, "teacherLibrary.recentImportsTitle")') &&
     bankImportUi.includes("summarizeImportBatch") &&
-    bankImportUi.includes("Target Library") &&
-    bankImportUi.includes("Drafts") &&
-    bankImportUi.includes("Warnings") &&
+    bankImportUi.includes('translate(locale, "teacherLibrary.targetLibrary")') &&
+    bankImportUi.includes('translate(locale, "teacherLibrary.drafts")') &&
+    bankImportUi.includes('translate(locale, "teacherLibrary.warnings")') &&
     bankImportUi.includes("status.retryable") &&
-    bankImportUi.includes("Zero drafts were created") &&
-    bankImportUi.includes("Open Review Drafts") &&
+    bankImportUi.includes('translate(locale, "teacherLibrary.zeroDrafts")') &&
+    bankImportUi.includes('translate(locale, "teacherLibrary.openReviewDrafts")') &&
     bankImportUi.includes("QuestionBoundaryGuardCard") &&
-    bankImportUi.includes("Nothing was published or") &&
-    bankImportUi.includes("assigned; retry later"),
+    bankImportUi.includes('translate(locale, "teacherLibrary.retryableMessage")'),
   "recent bank imports panel must derive teacher-safe status, counts, retry state, boundary summary, and a bank-scoped Review CTA",
 );
 
 assert(
-  bankImportsPage.includes("AI Parsing runs server-side") &&
-    bankImportsPage.includes("private drafts in this Library until review") &&
-    bankImportsPage.includes("Review is required before assignment") &&
+  bankImportsPage.includes('t("teacherLibrary.aiParsingServerSide")') &&
+    bankImportsPage.includes('t("teacherLibrary.reviewGateNotice")') &&
     bankImportsPage.includes("bankName={bank.name}") &&
     !bankImportsPage.includes("providerProfileId") &&
     !bankImportsPage.includes("api_key") &&
@@ -110,8 +108,7 @@ assert(
     reviewPreview.includes("preview.taxonomy.map") &&
     reviewGuidance.includes("Source boundary needs review") &&
     reviewGuidance.includes("Answer and solution need review") &&
-    bankReviewPage.includes("Approval confirms these questions for this Library") &&
-    bankReviewPage.includes("you did not preview remains your responsibility") &&
+    bankReviewPage.includes('t("teacherLibrary.approvalResponsibility")') &&
     !bankReviewPage.includes("published_at"),
   "teacher Review cards must load authenticated bank-scoped prompt, answer, solution, taxonomy, media, and safe boundary guidance without publishing",
 );

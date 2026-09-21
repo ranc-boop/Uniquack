@@ -6,7 +6,7 @@ import { fileURLToPath } from "node:url";
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const read = (path) => readFile(resolve(root, path), "utf8");
 
-const [migration, ambiguityFix, firstRoundLock, agent, recommend, reviewRoute, tools, sessions, sources, client, clientRuntime, panels, completion] =
+const [migration, ambiguityFix, firstRoundLock, agent, recommend, reviewRoute, tools, sessions, sources, client, clientRuntime, panels, completion, completionPanel] =
   await Promise.all([
     read("supabase/clean-migrations/0052_practice_library_scope_and_inventory.sql"),
     read("supabase/clean-migrations/0053_practice_session_source_rpc_ambiguity_fix.sql"),
@@ -21,8 +21,9 @@ const [migration, ambiguityFix, firstRoundLock, agent, recommend, reviewRoute, t
     read("src/lib/practice/agent-client-runtime.ts"),
     read("src/components/practice/practice-session-scope-panels.tsx"),
     read("src/lib/practice/completion.ts"),
+    read("src/components/practice/practice-completion-panel.tsx"),
   ]);
-const clientUi = `${client}\n${clientRuntime}\n${panels}`;
+const clientUi = `${client}\n${clientRuntime}\n${panels}\n${completionPanel}`;
 
 function includesAll(source, values, message) {
   for (const value of values) {
@@ -160,9 +161,9 @@ includesAll(
     "includePublicCatalog",
     "selectedBankIds",
     "sourceScopeLockedAt",
-    "not attempted",
+    "practice.notAttempted",
     '"practice_summary_delta"',
-    "Choose sources before starting the first round.",
+    "practice.chooseSources",
     "PracticeRoundNavigator",
     "questionCount",
   ],

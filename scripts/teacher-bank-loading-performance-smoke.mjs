@@ -31,10 +31,8 @@ const [
 ]);
 
 assert(
-  appPrimaryNav.includes("prefetch={false}") &&
-    teacherPendingLink.includes("prefetch={false}") &&
-    teacherPendingLink.includes("onMouseEnter={prefetchTarget}") &&
-    teacherPendingLink.includes("onFocus={prefetchTarget}"),
+  appPrimaryNav.includes("RoutePendingLink") &&
+    teacherPendingLink.includes("RoutePendingLink"),
   "Teacher navigation must disable viewport prefetch and only warm routes on user intent.",
 );
 
@@ -202,7 +200,7 @@ assert(
   "Library Review Drafts must overlap lightweight access with draft loading instead of fetching unused detail metrics first.",
 );
 assert(
-  adminQuestionsPage.includes("const [profile, params, supabase] = await Promise.all([") &&
+  adminQuestionsPage.includes("const [, params, supabase, locale] = await Promise.all([") &&
     adminQuestionsPage.includes('"search_official_public_questions_v2"') &&
     adminQuestionsPage.includes("page_limit: PAGE_SIZE") &&
     adminQuestionsPage.includes('.select("id, solution_html")') &&

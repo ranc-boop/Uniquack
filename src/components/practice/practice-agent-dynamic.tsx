@@ -2,7 +2,15 @@
 
 import dynamic from "next/dynamic";
 
+import { useLocale } from "@/components/i18n/locale-provider";
 import { PracticeInlineLoading } from "@/components/practice/practice-session-scope-panels";
+import type { MessageKey } from "@/lib/i18n/messages";
+
+function PracticeDynamicLoading({ messageKey }: { messageKey: MessageKey }) {
+  const { t } = useLocale();
+
+  return <PracticeInlineLoading label={t(messageKey)} />;
+}
 
 export const FeedbackText = dynamic(
   () => import("@/components/math-content").then((module) => module.FeedbackText),
@@ -20,7 +28,7 @@ export const PracticeCompletionPanel = dynamic(
       (module) => module.PracticeCompletionPanel,
     ),
   {
-    loading: () => <PracticeInlineLoading label="Loading completion report..." />,
+    loading: () => <PracticeDynamicLoading messageKey="practice.loadingCompletion" />,
     ssr: false,
   },
 );
@@ -31,7 +39,7 @@ export const PracticeQuestionCard = dynamic(
       (module) => module.PracticeQuestionCard,
     ),
   {
-    loading: () => <PracticeInlineLoading label="Loading question..." />,
+    loading: () => <PracticeDynamicLoading messageKey="practice.loadingQuestion" />,
     ssr: false,
   },
 );
@@ -42,7 +50,7 @@ export const PracticeRoundReviewPanel = dynamic(
       (module) => module.PracticeRoundReviewPanel,
     ),
   {
-    loading: () => <PracticeInlineLoading label="Loading round review..." />,
+    loading: () => <PracticeDynamicLoading messageKey="practice.loadingRoundReview" />,
     ssr: false,
   },
 );
@@ -53,7 +61,7 @@ export const ReadableDataCard = dynamic(
       (module) => module.ReadableDataCard,
     ),
   {
-    loading: () => <PracticeInlineLoading label="Loading study state..." />,
+    loading: () => <PracticeDynamicLoading messageKey="practice.loadingStudyState" />,
     ssr: false,
   },
 );
@@ -61,7 +69,7 @@ export const ReadableDataCard = dynamic(
 export const TracePanel = dynamic(
   () => import("@/components/practice/practice-trace-panel").then((module) => module.TracePanel),
   {
-    loading: () => <PracticeInlineLoading label="Loading trace..." />,
+    loading: () => <PracticeDynamicLoading messageKey="practice.loadingTrace" />,
     ssr: false,
   },
 );

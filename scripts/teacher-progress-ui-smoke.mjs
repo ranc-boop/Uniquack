@@ -129,10 +129,10 @@ async function main() {
   const detailPage = await read("src/app/teacher/classrooms/[id]/assignments/[assignmentId]/page.tsx");
   const listPage = await read("src/app/teacher/classrooms/[id]/assignments/page.tsx");
   assert(
-    detailPage.includes("One row per active classroom student") &&
-      detailPage.includes("Practice evidence") &&
-      detailPage.includes("Draft assignment is teacher-only") &&
-      listPage.includes("Open progress"),
+    detailPage.includes("assignmentDetail.studentProgressDescription") &&
+      detailPage.includes("assignmentDetail.optionalEvidenceByQuestion") &&
+      detailPage.includes("assignmentDetail.draftTeacherOnly") &&
+      listPage.includes("assignments.openProgress"),
     "teacher progress UI source must expose progress table, evidence copy, and list summaries",
   );
   console.log("PASS teacher progress UI source exposes progress summary and student table");

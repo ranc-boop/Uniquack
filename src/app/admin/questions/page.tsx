@@ -5,6 +5,8 @@ import {
 } from "@/components/questions/question-management-workbench";
 import { AdminPageHeader } from "@/components/admin/admin-page-header";
 import { requireAdmin } from "@/lib/auth/guards";
+import { translate } from "@/lib/i18n/messages";
+import { getRequestLocale } from "@/lib/i18n/server";
 import { createClient } from "@/lib/supabase/server";
 
 export const dynamic = "force-dynamic";
@@ -31,10 +33,11 @@ export default async function AdminOfficialPublicLibraryPage({
 }: {
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
-  const [, params, supabase] = await Promise.all([
+  const [, params, supabase, locale] = await Promise.all([
     requireAdmin(),
     searchParams,
     createClient(),
+    getRequestLocale(),
   ]);
   const query = (first(params.q) ?? "").trim().slice(0, 80);
   const selectedId = first(params.selected);
@@ -81,7 +84,7 @@ export default async function AdminOfficialPublicLibraryPage({
   const items: QuestionWorkbenchItem[] = rows.map((row) => ({
     archiveId: membershipByQuestionId.get(row.question_id),
     actionHref: `/admin/questions/new?source=${row.question_id}`,
-    actionLabel: "Create revision",
+    actionLabel: translate(locale, "questions.createRevision"),
     approvalStatus: "approved",
     contentHtml: row.content_html,
     gradingCapability:
@@ -93,7 +96,7 @@ export default async function AdminOfficialPublicLibraryPage({
     questionCode: row.question_code,
     questionType: row.question_type,
     solutionHtml: detailById.get(row.question_id)?.solution_html ?? null,
-    sourceLabel: "Official Public Library",
+    sourceLabel: translate(locale, "admin.publicLibrary"),
     taxonomyReady: true,
     title: row.title,
   }));
@@ -106,7 +109,7 @@ export default async function AdminOfficialPublicLibraryPage({
           className="rounded-[14px] border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-800"
           role="alert"
         >
-          Official Public Library could not be loaded: {error.message}
+          {translate(locale, "common.requestFailed")}
         </div>
       ) : null}
       <QuestionManagementWorkbench

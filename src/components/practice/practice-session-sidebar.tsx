@@ -15,6 +15,7 @@ import type { PointerEvent as ReactPointerEvent } from "react";
 import {
   FeedbackText,
 } from "@/components/practice/practice-agent-dynamic";
+import { useLocale } from "@/components/i18n/locale-provider";
 import {
   PracticeInlineLoading,
   PracticeSessionListLoading,
@@ -95,11 +96,13 @@ export function PracticeSessionSidebar({
   onSubmitRename,
   onSwitchSession,
 }: PracticeSessionSidebarProps) {
+  const { t } = useLocale();
+
   return (
     <aside className="relative transition-all duration-300 xl:sticky xl:top-20 xl:h-[calc(100vh-5rem)] xl:overflow-y-auto">
       {!isCollapsed ? (
         <button
-          aria-label="Resize sessions sidebar"
+          aria-label={t("practice.resizeSessionsSidebar")}
           className="student-focus-ring group absolute -right-2 top-0 z-40 hidden h-full w-4 cursor-col-resize rounded-full bg-transparent xl:block"
           onPointerDown={onResize}
           type="button"
@@ -111,7 +114,7 @@ export function PracticeSessionSidebar({
       {isCollapsed ? (
         <div className="hidden h-full min-h-64 flex-col items-center border-r border-slate-200 bg-slate-50/80 px-2 py-5 xl:flex">
           <Button
-            aria-label="Expand sessions sidebar"
+            aria-label={t("practice.expandSessionsSidebar")}
             className="size-10 rounded-xl bg-slate-200/70 text-slate-900 hover:bg-slate-200"
             onClick={onExpand}
             size="icon"
@@ -122,7 +125,7 @@ export function PracticeSessionSidebar({
           </Button>
           <div className="mt-8 flex flex-col items-center gap-4">
             <Button
-              aria-label="New practice session"
+              aria-label={t("practice.newSession")}
               className="size-10"
               disabled={isPending}
               onClick={onCreateNewSession}
@@ -133,7 +136,7 @@ export function PracticeSessionSidebar({
               <Plus className="size-5" aria-hidden="true" />
             </Button>
             <Button
-              aria-label="Show sessions"
+              aria-label={t("practice.showSessions")}
               className="size-10"
               onClick={onExpand}
               size="icon"
@@ -152,9 +155,9 @@ export function PracticeSessionSidebar({
           <section>
             <div className="sticky top-3 z-30 mb-9 bg-slate-50/95 pb-2">
               <div className="flex items-start justify-between gap-3">
-                <h2 className="text-lg font-semibold tracking-tight text-slate-950">Sessions</h2>
+                <h2 className="text-lg font-semibold tracking-tight text-slate-950">{t("practice.sessions")}</h2>
                 <Button
-                  aria-label="Collapse sessions sidebar"
+                  aria-label={t("practice.collapseSessionsSidebar")}
                   className="hidden size-9 shrink-0 rounded-xl bg-slate-100 text-slate-700 shadow-sm hover:bg-slate-200 xl:inline-flex"
                   onClick={onCollapse}
                   size="icon"
@@ -176,12 +179,12 @@ export function PracticeSessionSidebar({
                   <Plus className="size-4" aria-hidden="true" />
                 </span>
                 <span className="min-w-0 flex-1">
-                  <span className="block truncate text-sm font-bold text-slate-900">New practice session</span>
+                  <span className="block truncate text-sm font-bold text-slate-900">{t("practice.newSession")}</span>
                 </span>
               </button>
               <div className="space-y-3">
                 <div className="flex items-center justify-between px-1">
-                  <p className="text-sm font-bold text-slate-950">Recent</p>
+                  <p className="text-sm font-bold text-slate-950">{t("practice.recent")}</p>
                   <span className="ml-3 h-px flex-1 bg-slate-100" />
                 </div>
                 <div className="space-y-1" data-testid="practice-session-list">
@@ -238,12 +241,12 @@ export function PracticeSessionSidebar({
                         </span>
                       </button>
                       {activeSessionId === item.id ? (
-                        <span className="size-2 rounded-full bg-sky-600" aria-label="Current session" />
+                        <span className="size-2 rounded-full bg-sky-600" aria-label={t("practice.currentSession")} />
                       ) : null}
                       <Popover>
                         <PopoverTrigger asChild>
                           <Button
-                            aria-label={`Session actions for ${item.title}`}
+                            aria-label={t("practice.sessionActions", { title: item.title })}
                             className="size-8 shrink-0 text-slate-500 opacity-70 hover:text-slate-900 group-hover:opacity-100"
                             disabled={isPending}
                             onClick={(event) => event.stopPropagation()}
@@ -264,7 +267,7 @@ export function PracticeSessionSidebar({
                             variant="ghost"
                           >
                             <SidebarIcon icon={Pencil} />
-                            Rename session
+                            {t("practice.renameSession")}
                           </Button>
                           <Button
                             className="h-9 w-full justify-start px-2 text-destructive hover:text-destructive"
@@ -275,14 +278,14 @@ export function PracticeSessionSidebar({
                             variant="ghost"
                           >
                             <SidebarIcon icon={Trash2} />
-                            Delete
+                            {t("common.delete")}
                           </Button>
                         </PopoverContent>
                       </Popover>
                     </div>
                   )) : (
                     <div className="rounded-lg border border-dashed border-slate-300 bg-slate-50/80 p-4 text-sm leading-6 text-slate-600">
-                      No saved sessions yet. Generate your first round to start a reusable study thread.
+                      {t("practice.noSavedSessions")}
                     </div>
                   )}
                 </div>
@@ -295,7 +298,7 @@ export function PracticeSessionSidebar({
                     type="button"
                     variant="outline"
                   >
-                    {sessionHistoryLoadingMore ? "Loading more..." : "Load more sessions"}
+                    {sessionHistoryLoadingMore ? t("practice.loadingMore") : t("practice.loadMoreSessions")}
                   </Button>
                 ) : null}
               </div>
@@ -303,9 +306,9 @@ export function PracticeSessionSidebar({
           </section>
           <div className="mt-auto space-y-3">
             <details className="rounded-lg bg-white/80 p-3 text-xs leading-5 text-slate-600 ring-1 ring-slate-200/70">
-              <summary className="cursor-pointer text-sm font-bold text-slate-900">Practice cycle</summary>
+              <summary className="cursor-pointer text-sm font-bold text-slate-900">{t("practice.cycle")}</summary>
               <div className="mt-3 space-y-3">
-                <p>Historical attempts and Assignment evidence stay intact. Recommendations will treat every available question as unseen in a new self-study session.</p>
+                <p>{t("practice.cycleDescription")}</p>
                 <Button
                   className="w-full justify-start"
                   disabled={isPending}
@@ -315,15 +318,15 @@ export function PracticeSessionSidebar({
                   variant="outline"
                 >
                   <RotateCcw className="size-4" aria-hidden="true" />
-                  Practice all questions again
+                  {t("practice.allAgain")}
                 </Button>
               </div>
             </details>
             <details className="rounded-lg bg-white/80 p-3 text-xs leading-5 text-slate-600 ring-1 ring-slate-200/70">
-              <summary className="cursor-pointer text-sm font-bold text-slate-900">Long-term memory</summary>
+              <summary className="cursor-pointer text-sm font-bold text-slate-900">{t("practice.longTermMemory")}</summary>
               <div className="mt-3 space-y-2">
                 {preferenceLoading ? (
-                  <PracticeInlineLoading label="Loading learning memory..." />
+                  <PracticeInlineLoading label={t("practice.loadingMemory")} />
                 ) : memoryEditing ? (
                   <Textarea
                     className="min-h-28 bg-white text-xs"
@@ -335,19 +338,19 @@ export function PracticeSessionSidebar({
                   <FeedbackText className="border-none bg-transparent p-0 text-xs leading-5 text-slate-600" compact value={longTermMemory} />
                 ) : (
                   <p className="text-slate-500">
-                    No durable learning pattern has been saved yet. It will update when a new session starts and old session evidence needs merging.
+                    {t("practice.memoryEmpty")}
                   </p>
                 )}
                 <div className="flex flex-wrap gap-2">
                   {memoryEditing ? (
                     <>
-                      <Button disabled={isPending} onClick={onSaveLongTermMemory} size="sm" type="button" variant="secondary">Save</Button>
-                      <Button disabled={isPending} onClick={() => { onSetMemoryEditing(false); onSetLongTermMemoryDraft(longTermMemory); }} size="sm" type="button" variant="outline">Cancel</Button>
+                      <Button disabled={isPending} onClick={onSaveLongTermMemory} size="sm" type="button" variant="secondary">{t("common.save")}</Button>
+                      <Button disabled={isPending} onClick={() => { onSetMemoryEditing(false); onSetLongTermMemoryDraft(longTermMemory); }} size="sm" type="button" variant="outline">{t("common.cancel")}</Button>
                     </>
                   ) : (
-                    <Button disabled={isPending} onClick={() => onSetMemoryEditing(true)} size="sm" type="button" variant="outline">Edit</Button>
+                    <Button disabled={isPending} onClick={() => onSetMemoryEditing(true)} size="sm" type="button" variant="outline">{t("common.edit")}</Button>
                   )}
-                  <Button disabled={isPending || !longTermMemory.trim()} onClick={onClearLongTermMemory} size="sm" type="button" variant="ghost">Clear</Button>
+                  <Button disabled={isPending || !longTermMemory.trim()} onClick={onClearLongTermMemory} size="sm" type="button" variant="ghost">{t("practice.clearMemory")}</Button>
                 </div>
               </div>
             </details>

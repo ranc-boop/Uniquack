@@ -33,6 +33,9 @@ import { normalizeQuestionOptions } from "@/lib/questions/answer-spec";
 import { createClient } from "@/lib/supabase/server";
 import { getQuestionAssetUrl } from "@/lib/storage/question-assets";
 import { loadTaxonomyCatalog } from "@/lib/tags/taxonomy-db";
+import { formatDateTime, formatNumber } from "@/lib/i18n/locale";
+import { getRequestLocale } from "@/lib/i18n/server";
+import { translate } from "@/lib/i18n/messages";
 import type { Video } from "@/types/database";
 
 export const dynamic = "force-dynamic";
@@ -46,18 +49,7 @@ type QuestionDetailPageProps = {
   }>;
 };
 
-function formatDate(value: string | null | undefined) {
-  if (!value) {
-    return null;
-  }
-
-  return new Intl.DateTimeFormat("en-US", {
-    dateStyle: "medium",
-    timeStyle: "short",
-  }).format(new Date(value));
-}
-
-function DifficultyBadge({ rating }: { rating: number }) {
+function DifficultyBadge({ rating, label }: { rating: number; label: string }) {
   let color = "bg-green-100 text-green-800 hover:bg-green-100";
 
   if (rating >= 400) {
@@ -70,7 +62,7 @@ function DifficultyBadge({ rating }: { rating: number }) {
 
   return (
     <span className={`inline-flex items-center rounded-md px-2 py-1 text-xs font-medium ${color}`}>
-      Difficulty {rating}
+      {label} {rating}
     </span>
   );
 }
@@ -115,6 +107,9 @@ export default async function QuestionDetailPage({
 }: QuestionDetailPageProps) {
   const { id } = await params;
   const pageMode = (await searchParams)?.mode === "practice" ? "practice" : "browse";
+  const locale = await getRequestLocale();
+  const t = (key: Parameters<typeof translate>[1], values?: Parameters<typeof translate>[2]) =>
+    translate(locale, key, values);
 
   if (!isSupabaseConfigured()) {
     return <SupabaseConfigNotice />;
@@ -135,7 +130,7 @@ export default async function QuestionDetailPage({
     return (
       <Card className="border-destructive/30">
         <CardContent className="p-6 text-sm text-destructive">
-          {questionError.message}
+          {t("common.requestFailed")}
         </CardContent>
       </Card>
     );
@@ -177,7 +172,7 @@ export default async function QuestionDetailPage({
     return (
       <Card className="border-destructive/30">
         <CardContent className="p-6 text-sm text-destructive">
-          {videoError.message}
+          {t("common.requestFailed")}
         </CardContent>
       </Card>
     );
@@ -187,7 +182,7 @@ export default async function QuestionDetailPage({
     return (
       <Card className="border-destructive/30">
         <CardContent className="p-6 text-sm text-destructive">
-          {displayedAssetsError.message}
+          {t("common.requestFailed")}
         </CardContent>
       </Card>
     );
@@ -218,12 +213,12 @@ export default async function QuestionDetailPage({
     contentExcerpt: htmlToPlainTextExcerpt(question.content_html),
     contentHtml: question.content_html,
     difficulty: question.difficulty_rating,
-    expectedSkill: "Single-question practice",
+        expectedSkill: t("questionDetail.singleQuestionPractice"),
     id: question.id,
     options: questionOptions,
     questionCode: question.question_code,
     questionType: question.question_type,
-    reason: "Opened directly from the question detail page.",
+    reason: t("questionDetail.openedDirectly"),
     source: question.source,
     tagIds: publicTaxonomyAssignments.map((assignment) => assignment.tag_id),
     title: question.title,
@@ -239,25 +234,24 @@ export default async function QuestionDetailPage({
                 {question.question_code}
               </Badge>
               <Badge variant="secondary">{question.question_type}</Badge>
-              <DifficultyBadge rating={question.difficulty_rating} />
+              <DifficultyBadge rating={question.difficulty_rating} label={t("questionDetail.difficulty")} />
             </div>
             <h1 className="text-3xl font-bold tracking-tight">
               {question.title}
             </h1>
             <p className="text-sm text-muted-foreground">
-              {question.question_code} | {question.question_type} | difficulty{" "}
-              {question.difficulty_rating}
+              {question.question_code} | {question.question_type} | {t("questionDetail.difficulty")} {formatNumber(locale, question.difficulty_rating)}
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
             <Button asChild size="sm" variant={pageMode === "browse" ? "default" : "outline"}>
-              <Link href={`/questions/${question.id}`}>Browse mode</Link>
+              <Link href={`/questions/${question.id}`}>{t("questionDetail.browseMode")}</Link>
             </Button>
             <Button asChild size="sm" variant={pageMode === "practice" ? "default" : "outline"}>
-              <Link href={`/questions/${question.id}?mode=practice`}>Practice mode</Link>
+              <Link href={`/questions/${question.id}?mode=practice`}>{t("questionDetail.practiceMode")}</Link>
             </Button>
             <Button asChild size="sm" variant="outline">
-              <Link href="/questions">Back to questions</Link>
+              <Link href="/questions">{t("questionDetail.backToQuestions")}</Link>
             </Button>
           </div>
         </div>
@@ -275,12 +269,12 @@ export default async function QuestionDetailPage({
 
           <Card>
             <CardContent className="space-y-8 p-6">
-              <QuestionSection title="Description">
+              <QuestionSection title={t("questionDetail.description")}>
                 <QuestionText value={question.content_html} />
               </QuestionSection>
 
               {question.question_type === "mcq" && questionOptions.length ? (
-                <QuestionSection title="Options">
+                <QuestionSection title={t("questionDetail.options")}>
                   <div className="space-y-2">
                     {questionOptions.map((option) => (
                       <div
@@ -301,19 +295,19 @@ export default async function QuestionDetailPage({
               ) : null}
 
               {questionImages.length ? (
-                <QuestionSection title="Images">
+                <QuestionSection title={t("questionDetail.images")}>
                   <QuestionDetailImageGallery images={questionImages} />
                 </QuestionSection>
               ) : null}
 
               {pageMode === "browse" ? (
-                <QuestionSection title="Solution">
+                <QuestionSection title={t("questionDetail.solution")}>
                   {question.solution_html ? (
                     <Accordion type="single" collapsible>
                       <AccordionItem value="solution">
                         <AccordionTrigger>
                           <span className="text-base font-semibold">
-                            View solution
+                            {t("questionDetail.viewSolution")}
                           </span>
                         </AccordionTrigger>
                         <AccordionContent>
@@ -325,14 +319,14 @@ export default async function QuestionDetailPage({
                     </Accordion>
                   ) : (
                     <div className="rounded-md border border-dashed bg-muted/20 p-4 text-sm text-muted-foreground">
-                      No solution content available.
+                      {t("questionDetail.noSolution")}
                     </div>
                   )}
                 </QuestionSection>
               ) : (
-                <QuestionSection title="Solution">
+                <QuestionSection title={t("questionDetail.solution")}>
                   <div className="rounded-md border border-dashed bg-muted/20 p-4 text-sm text-muted-foreground">
-                    Hidden during practice mode. Submit your answer or switch back to browse mode to review it.
+                    {t("questionDetail.hiddenDuringPractice")}
                   </div>
                 </QuestionSection>
               )}
@@ -344,52 +338,52 @@ export default async function QuestionDetailPage({
           <SidebarCard>
             <div className="space-y-2 text-sm">
               <div className="flex items-center justify-between">
-              <span className="text-muted-foreground">Problem ID</span>
+              <span className="text-muted-foreground">{t("questionDetail.problemId")}</span>
               <span className="font-mono font-medium">
                 {question.question_code}
               </span>
               </div>
               <div className="flex items-center justify-between">
-              <span className="text-muted-foreground">Type</span>
+              <span className="text-muted-foreground">{t("questionDetail.type")}</span>
               <span className="font-medium">{question.question_type}</span>
               </div>
               <div className="flex items-center justify-between">
-              <span className="text-muted-foreground">Difficulty</span>
+              <span className="text-muted-foreground">{t("questionDetail.difficulty")}</span>
               <span className="font-medium">
                 {question.difficulty_rating}
               </span>
               </div>
               <div className="flex items-center justify-between">
-              <span className="text-muted-foreground">Status</span>
+              <span className="text-muted-foreground">{t("questionDetail.status")}</span>
               <span className="font-medium">{question.status}</span>
               </div>
               {question.source ? (
                 <div className="flex items-center justify-between">
-                  <span className="text-muted-foreground">Source</span>
+                  <span className="text-muted-foreground">{t("questionDetail.source")}</span>
                   <span className="font-medium">{question.source}</span>
                 </div>
               ) : null}
-              {formatDate(question.published_at) ? (
+              {question.published_at ? (
                 <div className="flex items-center justify-between">
-                  <span className="text-muted-foreground">Published</span>
+                  <span className="text-muted-foreground">{t("questionDetail.published")}</span>
                   <span className="font-medium">
-                    {formatDate(question.published_at)}
+                    {question.published_at ? formatDateTime(locale, question.published_at) : null}
                   </span>
                 </div>
               ) : null}
             </div>
           </SidebarCard>
 
-          <SidebarCard title="Official taxonomy tags">
+          <SidebarCard title={t("questionDetail.officialTaxonomyTags")}>
             <TaxonomyTagChips
               assignments={publicTaxonomyAssignments}
-              emptyLabel="No taxonomy tags assigned yet."
+              emptyLabel={t("questionDetail.noTaxonomyTags")}
               taxonomyCatalog={taxonomyCatalog}
             />
           </SidebarCard>
 
           {pageMode === "browse" ? (
-            <SidebarCard title="Answer data">
+            <SidebarCard title={t("questionDetail.answerData")}>
               <QuestionAnswerSummary
                 answerSpec={question.answer_spec}
                 options={question.options}
@@ -399,14 +393,14 @@ export default async function QuestionDetailPage({
           ) : null}
 
           {video ? (
-            <SidebarCard title="Video explanation">
+            <SidebarCard title={t("questionDetail.videoExplanation")}>
               <div className="space-y-3">
                 <div className="text-sm font-medium">
                   <Link
                     href={`/videos/${video.id}`}
                     className="hover:underline underline-offset-4"
                   >
-                    {video.title ?? "Untitled video"}
+                    {video.title ?? t("videos.untitled")}
                   </Link>
                 </div>
                 <div className="aspect-video overflow-hidden rounded-md border bg-black">
@@ -417,7 +411,7 @@ export default async function QuestionDetailPage({
                 </div>
                 <div className="flex flex-wrap gap-2 pt-1">
                   <Button asChild variant="outline" size="sm">
-                    <Link href={`/videos/${video.id}`}>Open video</Link>
+                    <Link href={`/videos/${video.id}`}>{t("questionDetail.openVideo")}</Link>
                   </Button>
                   <Button asChild variant="outline" size="sm">
                     <a
@@ -425,16 +419,16 @@ export default async function QuestionDetailPage({
                       target="_blank"
                       rel="noreferrer"
                     >
-                      Original video
+                      {t("questionDetail.originalVideo")}
                     </a>
                   </Button>
                 </div>
               </div>
             </SidebarCard>
           ) : (
-            <SidebarCard title="Video explanation">
+            <SidebarCard title={t("questionDetail.videoExplanation")}>
               <div className="rounded-md border border-dashed bg-muted/20 p-4 text-sm text-muted-foreground">
-                No video explanation available.
+                {t("questionDetail.noVideoExplanation")}
               </div>
             </SidebarCard>
           )}

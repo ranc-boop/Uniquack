@@ -4,13 +4,14 @@ import { notFound } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { requireTeacher } from "@/lib/auth/guards";
 import {
-  bankMemberRoleLabel,
   canManageBankContent,
   getTeacherQuestionBankDetail,
   QuestionBankSchemaMissingError,
-  questionBankVisibilityLabel,
 } from "@/lib/question-banks";
 import { createClient } from "@/lib/supabase/server";
+import { formatNumber } from "@/lib/i18n/locale";
+import { getRequestLocale } from "@/lib/i18n/server";
+import { translate } from "@/lib/i18n/messages";
 
 import {
   BankBadge,
@@ -20,15 +21,15 @@ import {
 
 export const dynamic = "force-dynamic";
 
-function SetupNeededState() {
+function SetupNeededState({ locale }: { locale: Parameters<typeof translate>[0] }) {
   return (
     <BankWorkbenchPage>
       <section className="border-y border-rose-200 bg-white px-6 py-10">
         <h1 className="text-2xl font-bold text-slate-950">
-          Library unavailable
+          {translate(locale, "teacherLibrary.libraryUnavailable")}
         </h1>
         <Button asChild className="mt-5" variant="outline">
-          <Link href="/teacher/banks">Back to Libraries</Link>
+          <Link href="/teacher/banks">{translate(locale, "teacherLibrary.backToLibraries")}</Link>
         </Button>
       </section>
     </BankWorkbenchPage>
@@ -41,6 +42,8 @@ export default async function TeacherBankDetailPage({
   params: Promise<{ bankId: string }>;
 }) {
   const profile = await requireTeacher();
+  const locale = await getRequestLocale();
+  const t = (key: Parameters<typeof translate>[1], values?: Parameters<typeof translate>[2]) => translate(locale, key, values);
   const { bankId } = await params;
   const supabase = await createClient();
   let detail;
@@ -53,7 +56,7 @@ export default async function TeacherBankDetailPage({
     });
   } catch (error) {
     if (error instanceof QuestionBankSchemaMissingError) {
-      return <SetupNeededState />;
+      return <SetupNeededState locale={locale} />;
     }
     throw error;
   }
@@ -62,22 +65,36 @@ export default async function TeacherBankDetailPage({
 
   const { bank, currentUserRole } = detail;
   const canManageContent = canManageBankContent(currentUserRole);
+  const visibilityLabel =
+    bank.visibility === "organization"
+      ? t("teacherLibrary.visibilityOrganization")
+      : bank.visibility === "private"
+        ? t("teacherLibrary.visibilityPrivate")
+        : bank.visibility === "public"
+          ? t("teacherLibrary.visibilityLegacyPublic")
+          : t("teacherLibrary.visibilityShared");
+  const memberRoleLabel =
+    currentUserRole === "owner"
+      ? t("teacherLibrary.owner")
+      : currentUserRole === "editor"
+        ? t("teacherLibrary.editor")
+        : t("teacherLibrary.viewer");
   const nextAction = detail.reviewDraftCount
     ? {
         href: `/teacher/banks/${bank.id}/review`,
-        label: "Review",
-        title: `${detail.reviewDraftCount} Draft${detail.reviewDraftCount === 1 ? "" : "s"}`,
+        label: t("teacherLibrary.review"),
+        title: t("teacherLibrary.draftCount", { count: formatNumber(locale, detail.reviewDraftCount) }),
       }
     : detail.questionCount
       ? {
           href: `/teacher/publish?sourceBankId=${bank.id}`,
-          label: "Create Assignment",
-          title: `${detail.questionCount} Ready`,
+          label: t("teacherLibrary.createAssignment"),
+          title: t("teacherLibrary.readyCount", { count: formatNumber(locale, detail.questionCount) }),
         }
       : {
           href: `/teacher/banks/${bank.id}/imports`,
-          label: "Import",
-          title: "Add questions",
+          label: t("teacherLibrary.import"),
+          title: t("teacherLibrary.addQuestions"),
         };
 
   return (
@@ -89,16 +106,16 @@ export default async function TeacherBankDetailPage({
           </h1>
           <div className="mt-3 flex flex-wrap gap-2">
             <BankBadge tone="sky">
-              {questionBankVisibilityLabel(bank.visibility)}
+              {visibilityLabel}
             </BankBadge>
             <BankBadge tone="blue">
-              {bankMemberRoleLabel(currentUserRole ?? "viewer")}
+              {memberRoleLabel}
             </BankBadge>
           </div>
         </div>
         <div className="flex flex-wrap gap-2">
           <Button asChild variant="outline">
-            <Link href="/teacher/banks">Back</Link>
+            <Link href="/teacher/banks">{t("teacherLibrary.back")}</Link>
           </Button>
           {canManageContent ? (
             <Button asChild>
@@ -113,7 +130,7 @@ export default async function TeacherBankDetailPage({
       <section className="border-y border-slate-200 bg-white">
         <div className="flex flex-col gap-6 px-5 py-7 md:px-7 lg:flex-row lg:items-end lg:justify-between">
           <div>
-            <p className="text-sm font-semibold text-slate-500">Next action</p>
+            <p className="text-sm font-semibold text-slate-500">{t("teacherLibrary.nextAction")}</p>
             <h2 className="mt-2 text-2xl font-bold text-slate-950">
               {nextAction.title}
             </h2>
@@ -126,24 +143,24 @@ export default async function TeacherBankDetailPage({
         </div>
 
         <nav
-          aria-label="Library work"
+          aria-label={t("teacherLibrary.libraryWork")}
           className="grid border-t border-slate-200 md:grid-cols-3 md:divide-x md:divide-slate-200"
         >
           {[
             {
               count: detail.reviewDraftCount,
               href: `/teacher/banks/${bank.id}/review`,
-              label: "Draft",
+              label: t("teacherLibrary.draft"),
             },
             {
               count: detail.questionCount,
               href: `/teacher/banks/${bank.id}/questions`,
-              label: "Ready",
+              label: t("teacherLibrary.ready"),
             },
             {
               count: detail.activeMemberCount,
               href: `/teacher/banks/${bank.id}/members`,
-              label: "Members",
+              label: t("teacherLibrary.members"),
             },
           ].map((item) => (
             <Link
@@ -152,7 +169,7 @@ export default async function TeacherBankDetailPage({
               key={item.label}
             >
               <span>{item.label}</span>
-              <span className="tabular-nums text-slate-500">{item.count}</span>
+              <span className="tabular-nums text-slate-500">{formatNumber(locale, item.count)}</span>
             </Link>
           ))}
         </nav>

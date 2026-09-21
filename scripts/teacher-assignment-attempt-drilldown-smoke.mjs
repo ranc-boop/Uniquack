@@ -24,21 +24,21 @@ const [page, helper, progressPage, smokeAll, migrations] = await Promise.all([
 const normalizedPage = page.replace(/\s+/g, " ");
 
 assert(
-  page.includes("Assignment evidence") &&
-    page.includes("Student progress") &&
-    page.includes("Question performance") &&
-    page.includes("Attempt drilldown") &&
-    page.includes("View evidence") &&
-    page.includes("Correct / total") &&
-    page.includes("Attention signal"),
+  page.includes('t("assignmentDetail.evidenceEyebrow")') &&
+    page.includes('t("assignmentDetail.studentProgress")') &&
+    page.includes('t("assignmentDetail.questionPerformance")') &&
+    page.includes('t("assignmentDetail.attemptDrilldown")') &&
+    page.includes('t("assignmentDetail.viewEvidence")') &&
+    page.includes('t("assignmentDetail.correctTotal")') &&
+    page.includes('t("assignmentDetail.attentionSignal")'),
   "assignment detail must render the teacher evidence header, student table, question table, and drilldown",
 );
 
 assert(
-  normalizedPage.includes("Private student self-study is not included") &&
-    normalizedPage.includes("Optional evidence by assigned question") &&
-    normalizedPage.includes("Optional recent assignment-linked evidence") &&
-    normalizedPage.includes("The full Library stays private") &&
+  page.includes('t("assignmentDetail.evidenceDescription")') &&
+    page.includes('t("assignmentDetail.optionalEvidenceByQuestion")') &&
+    page.includes('t("assignmentDetail.optionalRecentEvidence")') &&
+    page.includes('t("assignmentDetail.assignmentOnlyLibraryPrivate")') &&
     !page.includes("lastPracticeSessionId") &&
     !page.includes("attempt.sessionId") &&
     !page.includes("@/components/student"),

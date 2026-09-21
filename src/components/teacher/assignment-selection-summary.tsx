@@ -6,6 +6,7 @@ import {
   LazyTeacherQuestionPreview,
   loadTeacherQuestionPreviews,
 } from "@/components/teacher/lazy-teacher-question-preview";
+import { useLocale } from "@/components/i18n/locale-provider";
 import { Button } from "@/components/ui/button";
 import type { TeacherPreviewKind } from "@/lib/teacher-question-preview-types";
 
@@ -14,9 +15,9 @@ const EMPTY_PREVIEW_VERSIONS: Record<string, string | undefined> = {};
 export function AssignmentSelectionSummary({
   bankId,
   formId,
-  helperText = "Choose at least one published question before saving or assigning.",
+  helperText,
   inputName = "questionIds",
-  totalLabel = "published question(s) available in this view.",
+  totalLabel,
   totalQuestions,
   previewKind = "assignment-selection",
   versions = EMPTY_PREVIEW_VERSIONS,
@@ -30,6 +31,7 @@ export function AssignmentSelectionSummary({
   previewKind?: TeacherPreviewKind;
   versions?: Record<string, string | undefined>;
 }) {
+  const { formatNumber, t } = useLocale();
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [previewIndex, setPreviewIndex] = useState(0);
   const [previewOpen, setPreviewOpen] = useState(false);
@@ -83,10 +85,14 @@ export function AssignmentSelectionSummary({
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <p className="text-sm font-semibold text-slate-950" aria-live="polite">
-            {selectedCount} selected
+            {t("assignment.selectedCount", { count: formatNumber(selectedCount) })}
           </p>
           <p className="mt-1 text-sm text-slate-600">
-            {selectedCount ? `${totalQuestions} ${totalLabel}` : helperText}
+            {selectedCount
+              ? `${formatNumber(totalQuestions)} ${
+                  totalLabel ?? t("assignment.defaultTotalLabel")
+                }`
+              : helperText ?? t("assignment.defaultSelectionHelp")}
           </p>
         </div>
         {bankId && selectedCount ? (
@@ -98,7 +104,7 @@ export function AssignmentSelectionSummary({
             type="button"
             variant="outline"
           >
-            {previewOpen ? "Close preview" : "Preview selected"}
+            {previewOpen ? t("assignment.closePreview") : t("assignment.previewSelected")}
           </Button>
         ) : null}
       </div>
@@ -107,7 +113,10 @@ export function AssignmentSelectionSummary({
         <div className="mt-4 border-t border-slate-200 pt-4">
           <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
             <span className="text-sm font-medium text-slate-600">
-              Question {safePreviewIndex + 1} of {selectedCount}
+              {t("assignment.questionPosition", {
+                current: formatNumber(safePreviewIndex + 1),
+                total: formatNumber(selectedCount),
+              })}
             </span>
             <div className="flex gap-2">
               <Button
@@ -119,7 +128,7 @@ export function AssignmentSelectionSummary({
                 type="button"
                 variant="outline"
               >
-                Previous
+                {t("questions.previous")}
               </Button>
               <Button
                 disabled={safePreviewIndex >= selectedCount - 1}
@@ -132,7 +141,7 @@ export function AssignmentSelectionSummary({
                 type="button"
                 variant="outline"
               >
-                Next
+                {t("questions.next")}
               </Button>
             </div>
           </div>

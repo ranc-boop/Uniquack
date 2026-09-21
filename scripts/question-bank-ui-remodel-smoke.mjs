@@ -30,42 +30,42 @@ const smokeAll = await read("scripts/smoke-all.mjs");
 
 assert(
   banksPage.includes("<BankWorkbenchPage") &&
-    banksPage.includes("Libraries") &&
-    banksPage.includes("Create Library") &&
-    banksPage.includes("Join by code") &&
-    banksPage.includes("Search Libraries") &&
-    banksPage.includes("Private") &&
-    banksPage.includes("Shared") &&
-    banksPage.includes("Organization") &&
-    banksPage.includes("Public") &&
-    banksPage.includes("Needs review") &&
-    banksPage.includes("Recently updated") &&
-    banksPage.includes("Assignment ready") &&
-    banksPage.includes("No Libraries yet"),
+    banksPage.includes('translate(locale, "teacher.libraries")') &&
+    banksPage.includes('translate(locale, "teacher.createLibrary")') &&
+    banksPage.includes('translate(locale, "teacher.joinByCode")') &&
+    banksPage.includes('translate(locale, "teacher.searchLibraries")') &&
+    banksPage.includes('translate(locale, "teacher.private")') &&
+    banksPage.includes('translate(locale, "teacher.shared")') &&
+    banksPage.includes('translate(locale, "teacher.organization")') &&
+    banksPage.includes('translate(locale, "teacher.public")') &&
+    banksPage.includes('translate(locale, "teacher.needsReview")') &&
+    banksPage.includes('translate(locale, "teacher.recentlyUpdated")') &&
+    banksPage.includes('translate(locale, "teacher.assignmentReady")') &&
+    banksPage.includes('translate(locale, "teacher.noLibrariesYet")'),
   "/teacher/banks must render the restrained Library workbench, CTAs, filters, search, and empty state",
 );
 
 assert(
-    bankUi.includes("BankRouteTabs") &&
-    bankUi.includes("Questions") &&
-    bankUi.includes('label: "Import"') &&
-    bankUi.includes('label: "Review"') &&
-    bankUi.includes("Public Submissions") &&
-    bankUi.includes("Blueprints") &&
-    bankUi.includes("Members") &&
-    bankUi.includes("Sources") &&
+  bankUi.includes("BankRouteTabs") &&
+    bankUi.includes('labelKey: "teacherLibrary.questions"') &&
+    bankUi.includes('labelKey: "teacherLibrary.import"') &&
+    bankUi.includes('labelKey: "teacherLibrary.review"') &&
+    bankUi.includes('labelKey: "teacherLibrary.publicSubmissions"') &&
+    bankUi.includes('labelKey: "teacherLibrary.blueprints"') &&
+    bankUi.includes('labelKey: "teacherLibrary.members"') &&
+    bankUi.includes('labelKey: "teacherLibrary.sources"') &&
     !bankUi.includes('label: "Settings"') &&
     !bankUi.includes("BankSafetyList"),
   "bank UI helper must expose only working repository tabs without static boundary cards",
 );
 
 assert(
-  bankDetailPage.includes("Next action") &&
-    bankDetailPage.includes('aria-label="Library work"') &&
-    bankDetailPage.includes('label: "Draft"') &&
-    bankDetailPage.includes('label: "Ready"') &&
-    bankDetailPage.includes('label: "Members"') &&
-    bankDetailPage.includes("bankMemberRoleLabel") &&
+  bankDetailPage.includes('t("teacherLibrary.nextAction")') &&
+    bankDetailPage.includes('aria-label={t("teacherLibrary.libraryWork")}') &&
+    bankDetailPage.includes('label: t("teacherLibrary.draft")') &&
+    bankDetailPage.includes('label: t("teacherLibrary.ready")') &&
+    bankDetailPage.includes('label: t("teacherLibrary.members")') &&
+    bankDetailPage.includes("memberRoleLabel") &&
     bankDetailPage.includes("canManageBankContent"),
   "/teacher/banks/[bankId] must render a focused next-action surface with readable membership and capability boundaries",
 );
@@ -76,7 +76,7 @@ assert(
     bankQuestionsPage.includes('query.status === "approved" ? "approved" : "pending"') &&
     bankQuestionsPage.includes("search_official_public_questions_v2") &&
     bankQuestionsPage.includes('mode="teacher"') &&
-    bankQuestionsPage.includes("Bulk manage") &&
+    bankQuestionsPage.includes("QuestionBulkActionBar") &&
     !bankQuestionsPage.includes("Start Practice"),
   "/teacher/banks/[bankId]/questions must default to the shared two-state workbench and use the official Public Library query",
 );
@@ -87,41 +87,42 @@ assert(
     bankImportsPage.includes("BankManualQuestionForm") &&
     bankImportsPage.includes("BatchImportJsonPanelLoader") &&
     bankImportsPage.includes("TeacherPdfBurstUpload") &&
-    bankImportsPage.includes("private Review Drafts in") &&
+    bankImportsPage.includes('t("teacherLibrary.importedPrivateReviewDrafts"') &&
     !bankImportsPage.includes("Advanced / Developer fixture"),
   "/teacher/banks/[bankId]/imports must expose Manual, JSON, and AI as equal bank-scoped entry points without a duplicate target selector",
 );
 
 assert(
-  bankReviewPage.includes("Review") &&
-    bankReviewPage.includes("All Drafts") &&
-    bankReviewPage.includes("Ready to review") &&
-    bankReviewPage.includes("Needs attention") &&
-    bankReviewPage.includes("Approve current page") &&
-    bankReviewPage.includes("Approval confirms these questions for this Library") &&
+  bankReviewPage.includes('t("teacherLibrary.review")') &&
+    bankReviewPage.includes('t("teacherLibrary.allDrafts")') &&
+    bankReviewPage.includes('t("teacherLibrary.readyToReview")') &&
+    bankReviewPage.includes('t("teacherLibrary.needsAttention")') &&
+    bankReviewPage.includes('t("teacherLibrary.approveCurrentPage"') &&
+    bankReviewPage.includes('t("teacherLibrary.approvalResponsibility")') &&
     bankReviewPage.includes("approveBankReviewQuestions"),
   "/teacher/banks/[bankId]/review must render the Library-scoped teacher QA queue and approval action",
 );
 
 assert(
-  bankMembersPage.includes("Members and share codes") &&
-    bankMembersPage.includes("Owner-controlled sharing") &&
-    bankMembersPage.includes("Create share code") &&
-    bankMembersPage.includes("Viewer") &&
-    bankMembersPage.includes("Editor") &&
-    bankMembersPage.includes("Classroom membership does not grant"),
+  bankMembersPage.includes('t("teacherLibrary.membersDescription")') &&
+    bankMembersPage.includes('t("teacherLibrary.ownerControlledSharing")') &&
+    bankMembersPage.includes('t("teacherLibrary.createShareCode")') &&
+    bankMembersPage.includes('t("teacherLibrary.viewer")') &&
+    bankMembersPage.includes('t("teacherLibrary.editor")') &&
+    bankMembersPage.includes('t("teacherLibrary.sharingDescription")') &&
+    bankMembersPage.includes('t("teacherLibrary.onlyOwnersShareCodes")'),
   "/teacher/banks/[bankId]/members must show role/share controls without implying student bank browsing",
 );
 
 assert(
-  bankBlueprintsPage.includes("Blueprint links for") &&
-    bankBlueprintsPage.includes("Create Blueprint from this Library") &&
-    bankBlueprintsPage.includes("No Blueprints linked to this Library yet") &&
-    bankBlueprintsPage.includes("Review Draft and Library approval gates") &&
+  bankBlueprintsPage.includes('t("teacherLibrary.blueprintsLinkedToLibrary")') &&
+    bankBlueprintsPage.includes('t("teacherLibrary.createBlueprintFromLibrary")') &&
+    bankBlueprintsPage.includes('t("teacherLibrary.noLinkedBlueprints")') &&
+    bankBlueprintsPage.includes('t("teacherLibrary.linkedBlueprintsDescription")') &&
     bankBlueprintsPage.includes("listBankLinkedBlueprints") &&
     !bankBlueprintsPage.includes("executeDeepSeek") &&
     !bankBlueprintsPage.includes("callAIPdfExtractionProvider") &&
-    bankSourcesPage.includes("Source material and import lineage") &&
+    bankSourcesPage.includes('t("teacherLibrary.sourceActivityDescription")') &&
     bankSettingsPage.includes("redirect(`/teacher/banks/${bankId}`)"),
   "bank blueprints must show bank-linked assets without generation shortcuts, while the removed Settings placeholder redirects safely",
 );

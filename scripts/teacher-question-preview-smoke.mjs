@@ -121,9 +121,9 @@ assert(
     validation.includes("readiness.blockingReasons") &&
     reviewActions.includes("assertBankReviewQuestionsPublishable") &&
     reviewActions.includes("approveCurrentBankReviewPage") &&
-    reviewPage.includes("Approve current page") &&
+    reviewPage.includes('t("teacherLibrary.approveCurrentPage"') &&
     reviewPage.includes("blockedCount") &&
-    reviewPage.includes("Approve") &&
+    reviewPage.includes('t("teacherLibrary.approve"') &&
     !reviewPage.includes("Skip") &&
     !reviewPage.includes("Expand all"),
   "Review must block hard errors and keep one explicit approval action per question",
@@ -139,7 +139,7 @@ assert(
     publishPage.includes("version={question.updated_at}") &&
     reviewPage.includes("version={question.updatedAt}") &&
     blueprintPage.includes('kind="question"') &&
-    assignmentSummary.includes("Preview selected") &&
+    assignmentSummary.includes('t("assignment.previewSelected")') &&
     assignmentSummary.includes("nextPreviewId") &&
     assignmentSummary.includes("loadTeacherQuestionPreviews"),
   "every question picker must share inline and selected-item previews with next-item prefetch",

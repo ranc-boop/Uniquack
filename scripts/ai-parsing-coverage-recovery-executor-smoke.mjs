@@ -129,7 +129,7 @@ assert(actions.includes("queueBankPdfCoverageRecovery") && actions.includes("ass
 assert(migration.includes("0038") || migration.includes("ai_pdf_coverage_recovery"), "forward migration must extend the existing queue only");
 assert(migration.includes("active_recovery") && migration.includes("Trusted worker role required."), "recovery claims must remain service-role-only and bounded");
 assert(!migration.match(/insert into public\.questions|approve_bank_review_question|insert into public\.assignments/i), "queue migration must not publish, approve, or assign content");
-assert(importUi.includes("Some likely question pages were not represented in the first extraction.") && importUi.includes("Additional Review Drafts were recovered for teacher review."), "teacher import status must use recovery-safe copy");
+assert(importUi.includes('translate(locale, "teacherLibrary.recoverySomePages")') && importUi.includes('translate(locale, "teacherLibrary.recoveryCompleted")'), "teacher import status must use recovery-safe copy");
 assert(smokeAll.includes("ai-parsing-coverage-recovery-executor-smoke.mjs"), "aggregate smoke must include recovery executor coverage");
 
 console.log("AI Parsing coverage recovery executor smoke passed.");

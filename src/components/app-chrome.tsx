@@ -5,6 +5,8 @@ import Link from "next/link";
 import { Check, ChevronDown, Menu } from "lucide-react";
 import { usePathname, useSearchParams } from "next/navigation";
 
+import { useLocale } from "@/components/i18n/locale-provider";
+import { LocaleSwitcher } from "@/components/i18n/locale-switcher";
 import { TeacherWorkspaceNav } from "@/components/teacher/teacher-workspace-nav";
 import { RouteTransitionFeedback } from "@/components/route-transition-feedback";
 import { isTeacherFocusPathname } from "@/lib/teacher-focus-workspace";
@@ -16,12 +18,6 @@ type AppChromeProps = {
   accountMenu: ReactNode;
   children: ReactNode;
   role: WorkspaceRole;
-};
-
-const workspaceLinks: Record<Workspace, { href: string; label: string }> = {
-  admin: { href: "/admin", label: "Admin" },
-  teacher: { href: "/teacher", label: "Teacher" },
-  student: { href: "/student", label: "Student" },
 };
 
 function currentWorkspace(
@@ -61,8 +57,18 @@ function availableWorkspaces(role: WorkspaceRole): Workspace[] {
 }
 
 export function AppChrome({ accountMenu, children, role }: AppChromeProps) {
+  const { t } = useLocale();
   const pathname = usePathname() ?? "";
   const searchParams = useSearchParams();
+  const workspaceLinks: Record<Workspace, { href: string; label: string }> = {
+    admin: { href: "/admin", label: t("roles.admin") },
+    teacher: { href: "/teacher", label: t("roles.teacher") },
+    student: { href: "/student", label: t("roles.student") },
+  };
+  const workspacePreviewLabels: Record<Exclude<Workspace, "admin">, string> = {
+    teacher: t("roles.teacherPreview"),
+    student: t("roles.studentPreview"),
+  };
   const workspace = currentWorkspace(pathname, role, searchParams.get("workspace"));
   const isAdmin = workspace === "admin";
   const isTeacher = workspace === "teacher";
@@ -75,24 +81,24 @@ export function AppChrome({ accountMenu, children, role }: AppChromeProps) {
       <RouteTransitionFeedback />
       <header className="workspace-topbar">
         <div className="workspace-topbar-inner">
-          <Link aria-label="EduStruct home" className="workspace-brand" data-route-progress="page" href={workspaceLinks[workspace].href}>
+          <Link aria-label={t("chrome.home")} className="workspace-brand" data-route-progress="page" href={workspaceLinks[workspace].href}>
             <span aria-hidden="true" className="workspace-brand-mark">O2I</span>
             <span className="hidden font-semibold tracking-[-0.01em] sm:inline">EduStruct</span>
           </Link>
 
           <details className="workspace-switcher group relative">
-            <summary className="workspace-control" aria-label={`Current workspace: ${workspaceLinks[workspace].label}`}>
+            <summary className="workspace-control" aria-label={t("chrome.currentWorkspace", { workspace: workspaceLinks[workspace].label })}>
               <span>{workspaceLinks[workspace].label}</span>
-              {isAdminPreview ? <span className="workspace-preview-chip">Preview</span> : null}
+              {isAdminPreview ? <span className="workspace-preview-chip">{t("chrome.preview")}</span> : null}
               <ChevronDown aria-hidden="true" className="size-4 text-[#6E6E73] transition-transform group-open:rotate-180" />
             </summary>
             <div className="workspace-switcher-menu">
-              <p className="workspace-menu-label">Workspace</p>
+              <p className="workspace-menu-label">{t("chrome.workspace")}</p>
               {options.map((option) => {
                 const active = option === workspace;
                 const label =
                   (role === "admin" || role === "super_admin") && option !== "admin"
-                    ? `${workspaceLinks[option].label} Preview`
+                    ? workspacePreviewLabels[option]
                     : workspaceLinks[option].label;
                 return (
                   <Link
@@ -110,15 +116,18 @@ export function AppChrome({ accountMenu, children, role }: AppChromeProps) {
             </div>
           </details>
 
-          <div className="ml-auto">{accountMenu}</div>
+          <div className="ml-auto flex items-center gap-2">
+            <LocaleSwitcher />
+            {accountMenu}
+          </div>
         </div>
       </header>
 
       {isAdminPreview ? (
         <div className="admin-preview-banner" role="status">
-          <span className="font-semibold">Admin Preview</span>
-          <span>You are viewing the {workspaceLinks[workspace].label} experience. Actions remain attributed to your administrator account.</span>
-          <Link data-route-progress="page" href="/admin">Return to Admin</Link>
+          <span className="font-semibold">{t("roles.adminPreview")}</span>
+          <span>{t("chrome.adminPreviewNotice", { workspace: workspaceLinks[workspace].label })}</span>
+          <Link data-route-progress="page" href="/admin">{t("chrome.returnToAdmin")}</Link>
         </div>
       ) : null}
 
@@ -132,7 +141,7 @@ export function AppChrome({ accountMenu, children, role }: AppChromeProps) {
             <TeacherWorkspaceNav />
           </aside>
           <details className="workspace-mobile-nav lg:hidden">
-            <summary><Menu aria-hidden="true" className="size-4" /> Teacher menu</summary>
+            <summary><Menu aria-hidden="true" className="size-4" /> {t("chrome.teacherMenu")}</summary>
             <TeacherWorkspaceNav />
           </details>
           <main className="teacher-route-main">{children}</main>

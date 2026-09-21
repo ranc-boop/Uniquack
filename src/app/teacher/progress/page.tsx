@@ -9,6 +9,14 @@ import type { LucideIcon } from "lucide-react";
 import { TeacherWorkspaceShell } from "@/components/teacher/teacher-workspace-shell";
 import { Button } from "@/components/ui/button";
 import { requireTeacher } from "@/lib/auth/guards";
+import {
+  formatDate,
+  formatDateTime,
+  formatNumber,
+  type Locale,
+} from "@/lib/i18n/locale";
+import { translate } from "@/lib/i18n/messages";
+import { getRequestLocale } from "@/lib/i18n/server";
 import { createClient } from "@/lib/supabase/server";
 import {
   getTeacherProgressSummary,
@@ -19,38 +27,43 @@ import {
 
 export const dynamic = "force-dynamic";
 
-function formatNumber(value: number) {
-  return new Intl.NumberFormat("en").format(value);
-}
+function formatProgressDate(locale: Locale, value: string | null | undefined) {
+  if (!value) return translate(locale, "classrooms.notSet");
 
-function formatDate(value: string | null | undefined) {
-  if (!value) return "Not set";
-
-  return new Intl.DateTimeFormat("en", {
+  return formatDate(locale, value, {
     dateStyle: "medium",
-  }).format(new Date(value));
+  });
 }
 
-function formatDateTime(value: string | null | undefined) {
-  if (!value) return "No activity yet";
+function formatProgressDateTime(locale: Locale, value: string | null | undefined) {
+  if (!value) return translate(locale, "teacher.progressNoActivityYet");
 
-  return new Intl.DateTimeFormat("en", {
+  return formatDateTime(locale, value, {
     dateStyle: "medium",
     timeStyle: "short",
-  }).format(new Date(value));
+  });
 }
 
-function assignmentStatusLabel(status: TeacherProgressAssignment["status"]) {
-  if (status === "assigned") return "Assigned";
-  if (status === "draft") return "Draft";
-  return "Archived";
+function formatProgressPercentage(locale: Locale, value: number) {
+  return `${formatNumber(locale, value)}%`;
 }
 
-function attentionReasonLabel(reason: TeacherProgressAttentionReason) {
-  if (reason === "overdue") return "Overdue";
-  if (reason === "due_soon") return "Due soon";
-  if (reason === "high_wrong_rate") return "Wrong-answer pattern";
-  return "Low completion";
+function assignmentStatusLabel(
+  locale: Locale,
+  status: TeacherProgressAssignment["status"],
+) {
+  if (status === "assigned") return translate(locale, "teacher.progressAssigned");
+  if (status === "draft") return translate(locale, "teacher.progressDraft");
+  return translate(locale, "teacher.progressArchived");
+}
+
+function attentionReasonLabel(locale: Locale, reason: TeacherProgressAttentionReason) {
+  if (reason === "overdue") return translate(locale, "teacher.progressOverdue");
+  if (reason === "due_soon") return translate(locale, "teacher.progressDueSoon");
+  if (reason === "high_wrong_rate") {
+    return translate(locale, "teacher.progressWrongAnswerPattern");
+  }
+  return translate(locale, "teacher.progressLowCompletion");
 }
 
 function SummaryCard({
@@ -104,32 +117,50 @@ function EmptyState({
   );
 }
 
-function ProgressCounts({ assignment }: { assignment: TeacherProgressAssignment }) {
+function ProgressCounts({
+  assignment,
+  locale,
+}: {
+  assignment: TeacherProgressAssignment;
+  locale: Locale;
+}) {
   return (
     <div className="grid grid-cols-3 gap-2 text-center">
       <div className="rounded-md border border-slate-200 bg-slate-50 px-2 py-2">
         <span className="block font-bold tabular-nums text-slate-950">
-          {assignment.completedCount}
+          {formatNumber(locale, assignment.completedCount)}
         </span>
-        <span className="text-xs text-slate-500">Done</span>
+        <span className="text-xs text-slate-500">
+          {translate(locale, "teacher.progressDone")}
+        </span>
       </div>
       <div className="rounded-md border border-slate-200 bg-slate-50 px-2 py-2">
         <span className="block font-bold tabular-nums text-slate-950">
-          {assignment.inProgressCount}
+          {formatNumber(locale, assignment.inProgressCount)}
         </span>
-        <span className="text-xs text-slate-500">Active</span>
+        <span className="text-xs text-slate-500">
+          {translate(locale, "teacher.progressActive")}
+        </span>
       </div>
       <div className="rounded-md border border-slate-200 bg-slate-50 px-2 py-2">
         <span className="block font-bold tabular-nums text-slate-950">
-          {assignment.notStartedCount}
+          {formatNumber(locale, assignment.notStartedCount)}
         </span>
-        <span className="text-xs text-slate-500">Not started</span>
+        <span className="text-xs text-slate-500">
+          {translate(locale, "teacher.progressNotStarted")}
+        </span>
       </div>
     </div>
   );
 }
 
-function AssignmentStatusBadge({ assignment }: { assignment: TeacherProgressAssignment }) {
+function AssignmentStatusBadge({
+  assignment,
+  locale,
+}: {
+  assignment: TeacherProgressAssignment;
+  locale: Locale;
+}) {
   const isAssigned = assignment.status === "assigned";
 
   return (
@@ -140,20 +171,26 @@ function AssignmentStatusBadge({ assignment }: { assignment: TeacherProgressAssi
           : "inline-flex rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-xs font-semibold text-slate-600"
       }
     >
-      {assignmentStatusLabel(assignment.status)}
+      {assignmentStatusLabel(locale, assignment.status)}
     </span>
   );
 }
 
-function AssignmentProgressSection({ progress }: { progress: TeacherProgressSummary }) {
+function AssignmentProgressSection({
+  locale,
+  progress,
+}: {
+  locale: Locale;
+  progress: TeacherProgressSummary;
+}) {
   return (
     <details className="teacher-panel overflow-hidden">
       <summary className="teacher-focus-ring min-h-11 cursor-pointer list-none p-5">
         <span className="block text-xl font-bold text-slate-950">
-          All Assignment progress
+          {translate(locale, "teacher.progressAllAssignmentProgress")}
         </span>
         <span className="mt-1 block text-sm leading-6 text-slate-600">
-          Optional cross-class completion and latest activity.
+          {translate(locale, "teacher.progressAllAssignmentProgressDescription")}
         </span>
       </summary>
 
@@ -162,16 +199,28 @@ function AssignmentProgressSection({ progress }: { progress: TeacherProgressSumm
           <div className="hidden border-t border-slate-100 lg:block">
             <table className="w-full table-fixed border-collapse text-left text-sm">
               <caption className="sr-only">
-                Assignment progress across active classroom rosters.
+                {translate(locale, "teacher.progressAssignmentProgressCaption")}
               </caption>
               <thead className="bg-slate-50 text-xs font-semibold uppercase text-slate-500">
                 <tr>
-                  <th className="w-[26%] px-5 py-3" scope="col">Assignment</th>
-                  <th className="w-[14%] px-3 py-3" scope="col">Status / due</th>
-                  <th className="w-[10%] px-3 py-3" scope="col">Students</th>
-                  <th className="w-[27%] px-3 py-3" scope="col">Progress</th>
-                  <th className="w-[15%] px-3 py-3" scope="col">Latest activity</th>
-                  <th className="w-[8%] px-3 py-3 text-right" scope="col">Open</th>
+                  <th className="w-[26%] px-5 py-3" scope="col">
+                    {translate(locale, "teacher.progressAssignment")}
+                  </th>
+                  <th className="w-[14%] px-3 py-3" scope="col">
+                    {translate(locale, "teacher.progressStatusDue")}
+                  </th>
+                  <th className="w-[10%] px-3 py-3" scope="col">
+                    {translate(locale, "teacher.progressStudents")}
+                  </th>
+                  <th className="w-[27%] px-3 py-3" scope="col">
+                    {translate(locale, "teacher.progress")}
+                  </th>
+                  <th className="w-[15%] px-3 py-3" scope="col">
+                    {translate(locale, "teacher.progressLatestActivity")}
+                  </th>
+                  <th className="w-[8%] px-3 py-3 text-right" scope="col">
+                    {translate(locale, "teacher.progressOpen")}
+                  </th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
@@ -186,32 +235,34 @@ function AssignmentProgressSection({ progress }: { progress: TeacherProgressSumm
                       </p>
                     </td>
                     <td className="px-3 py-4">
-                      <AssignmentStatusBadge assignment={assignment} />
+                      <AssignmentStatusBadge assignment={assignment} locale={locale} />
                       <p className="mt-2 text-xs text-slate-500">
-                        Due {formatDate(assignment.dueAt)}
+                        {translate(locale, "teacher.progressDue", {
+                          date: formatProgressDate(locale, assignment.dueAt),
+                        })}
                       </p>
                     </td>
                     <td className="px-3 py-4 font-semibold tabular-nums text-slate-950">
-                      {assignment.studentCount}
+                      {formatNumber(locale, assignment.studentCount)}
                     </td>
                     <td className="px-3 py-4">
                       {assignment.status === "assigned" ? (
-                        <ProgressCounts assignment={assignment} />
+                        <ProgressCounts assignment={assignment} locale={locale} />
                       ) : (
                         <p className="text-xs leading-5 text-slate-500">
-                          Draft work is not visible to students.
+                          {translate(locale, "teacher.progressDraftNotVisible")}
                         </p>
                       )}
                     </td>
                     <td className="px-3 py-4 text-xs leading-5 text-slate-600">
-                      {formatDateTime(assignment.latestActivityAt)}
+                      {formatProgressDateTime(locale, assignment.latestActivityAt)}
                     </td>
                     <td className="px-3 py-4 text-right">
                       <Button asChild size="sm" variant="ghost">
                         <Link
                           href={`/teacher/classrooms/${assignment.classroomId}/assignments/${assignment.assignmentId}`}
                         >
-                          View
+                          {translate(locale, "teacher.progressOpen")}
                         </Link>
                       </Button>
                     </td>
@@ -231,25 +282,33 @@ function AssignmentProgressSection({ progress }: { progress: TeacherProgressSumm
                     </h3>
                     <p className="mt-1 text-sm text-slate-600">{assignment.classroomName}</p>
                   </div>
-                  <AssignmentStatusBadge assignment={assignment} />
+                  <AssignmentStatusBadge assignment={assignment} locale={locale} />
                 </div>
                 {assignment.status === "assigned" ? (
-                  <ProgressCounts assignment={assignment} />
+                  <ProgressCounts assignment={assignment} locale={locale} />
                 ) : (
                   <p className="text-sm leading-6 text-slate-500">
-                    Draft work is teacher-only and has no student evidence yet.
+                    {translate(locale, "teacher.progressDraftTeacherOnly")}
                   </p>
                 )}
                 <div className="flex flex-wrap items-center justify-between gap-3 text-xs text-slate-500">
-                  <span>Due {formatDate(assignment.dueAt)}</span>
-                  <span>{assignment.studentCount} students</span>
-                  <span>{formatDateTime(assignment.latestActivityAt)}</span>
+                  <span>
+                    {translate(locale, "teacher.progressDue", {
+                      date: formatProgressDate(locale, assignment.dueAt),
+                    })}
+                  </span>
+                  <span>
+                    {translate(locale, "teacher.progressStudentCount", {
+                      count: formatNumber(locale, assignment.studentCount),
+                    })}
+                  </span>
+                  <span>{formatProgressDateTime(locale, assignment.latestActivityAt)}</span>
                 </div>
                 <Button asChild className="w-full" size="sm" variant="outline">
                   <Link
                     href={`/teacher/classrooms/${assignment.classroomId}/assignments/${assignment.assignmentId}`}
                   >
-                    Open assignment detail
+                    {translate(locale, "teacher.progressOpenAssignmentDetail")}
                   </Link>
                 </Button>
               </article>
@@ -260,18 +319,18 @@ function AssignmentProgressSection({ progress }: { progress: TeacherProgressSumm
         <div className="p-5">
           <EmptyState
             actionHref="/teacher/publish"
-            actionLabel="Create assignment"
-            description="Select reviewed Library items and assign them to a classroom to begin collecting evidence."
-            title="No assigned work yet"
+            actionLabel={translate(locale, "teacher.createAssignment")}
+            description={translate(locale, "teacher.progressNoAssignedWorkDescription")}
+            title={translate(locale, "teacher.progressNoAssignedWork")}
           />
         </div>
       ) : (
         <div className="p-5">
           <EmptyState
             actionHref="/teacher/classrooms"
-            actionLabel="Create classroom"
-            description="Create a classroom roster before delivering reviewed Library content."
-            title="No classrooms yet"
+            actionLabel={translate(locale, "teacher.progressCreateClassroom")}
+            description={translate(locale, "teacher.progressNoClassroomsDescription")}
+            title={translate(locale, "teacher.progressNoClassrooms")}
           />
         </div>
       )}
@@ -280,52 +339,61 @@ function AssignmentProgressSection({ progress }: { progress: TeacherProgressSumm
 }
 
 export default async function TeacherProgressPage() {
-  await requireTeacher();
+  const [, locale] = await Promise.all([requireTeacher(), getRequestLocale()]);
   const supabase = await createClient();
   const summary = await getTeacherProgressSummary({ supabase });
   const completionLabel =
     summary.overview.completionRate === null
-      ? "No assigned roster yet"
-      : `${summary.overview.completionRate}%`;
+      ? translate(locale, "teacher.progressNoAssignedRoster")
+      : formatProgressPercentage(locale, summary.overview.completionRate);
   const assignmentProgress = summary;
 
   return (
     <TeacherWorkspaceShell
-      eyebrow="Teacher evidence"
-      title="Progress / Feedback"
-      description="Start with the students and Assignments that need action, then open supporting evidence only when needed."
+      eyebrow={translate(locale, "teacher.progressEyebrow")}
+      title={translate(locale, "teacher.progressTitle")}
+      description={translate(locale, "teacher.progressDescription")}
       actions={
         <Button asChild variant="outline">
-          <Link href="/teacher/publish">Create assignment</Link>
+          <Link href="/teacher/publish">
+            {translate(locale, "teacher.createAssignment")}
+          </Link>
         </Button>
       }
     >
       <section className="grid gap-3 sm:grid-cols-3">
         <SummaryCard
-          detail={`${formatNumber(summary.overview.draftAssignmentCount)} drafts saved`}
+          detail={translate(locale, "teacher.progressDraftsSaved", {
+            count: formatNumber(locale, summary.overview.draftAssignmentCount),
+          })}
           icon={Activity}
-          label="Active assignments"
-          value={formatNumber(summary.overview.activeAssignmentCount)}
+          label={translate(locale, "teacher.progressActiveAssignments")}
+          value={formatNumber(locale, summary.overview.activeAssignmentCount)}
         />
         <SummaryCard
-          detail={`${formatNumber(summary.overview.completedStudentSlotCount)} of ${formatNumber(summary.overview.assignedStudentSlotCount)} student assignments complete`}
+          detail={translate(locale, "teacher.progressCompletionDetail", {
+            assigned: formatNumber(locale, summary.overview.assignedStudentSlotCount),
+            completed: formatNumber(locale, summary.overview.completedStudentSlotCount),
+          })}
           icon={CheckCircle2}
-          label="Completion rate"
+          label={translate(locale, "teacher.progressCompletionRate")}
           value={completionLabel}
         />
         <SummaryCard
-          detail="Across assigned classroom work"
+          detail={translate(locale, "teacher.progressAcrossAssignedWork")}
           icon={AlertTriangle}
-          label="Students needing attention"
-          value={formatNumber(summary.overview.studentsNeedingAttentionCount)}
+          label={translate(locale, "teacher.progressStudentsNeedingAttention")}
+          value={formatNumber(locale, summary.overview.studentsNeedingAttentionCount)}
         />
       </section>
 
       <section className="teacher-panel overflow-hidden">
           <div className="border-b border-slate-200 p-5">
-            <h2 className="text-xl font-bold text-slate-950">Needs attention</h2>
+            <h2 className="text-xl font-bold text-slate-950">
+              {translate(locale, "teacher.progressNeedsAttention")}
+            </h2>
             <p className="mt-1 text-sm leading-6 text-slate-600">
-              Due dates, low completion, and recent wrong-answer patterns across active classes.
+              {translate(locale, "teacher.progressNeedsAttentionDescription")}
             </p>
           </div>
           {summary.attentionQueue.length ? (
@@ -338,7 +406,9 @@ export default async function TeacherProgressPage() {
                         {assignment.title}
                       </h3>
                       <p className="mt-1 text-sm text-slate-600">
-                        {assignment.classroomName} · Due {formatDate(assignment.dueAt)}
+                        {assignment.classroomName} · {translate(locale, "teacher.progressDue", {
+                          date: formatProgressDate(locale, assignment.dueAt),
+                        })}
                       </p>
                     </div>
                     <div className="flex flex-wrap gap-2">
@@ -347,7 +417,7 @@ export default async function TeacherProgressPage() {
                           className="rounded-full border border-amber-200 bg-amber-50 px-2.5 py-1 text-xs font-semibold text-amber-900"
                           key={reason}
                         >
-                          {attentionReasonLabel(reason)}
+                          {attentionReasonLabel(locale, reason)}
                         </span>
                       ))}
                     </div>
@@ -355,32 +425,44 @@ export default async function TeacherProgressPage() {
                   <div className="grid gap-2 text-sm sm:grid-cols-3">
                     <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
                       <span className="block font-bold tabular-nums text-slate-950">
-                        {assignment.inProgressCount + assignment.notStartedCount}
+                        {formatNumber(
+                          locale,
+                          assignment.inProgressCount + assignment.notStartedCount,
+                        )}
                       </span>
-                      <span className="text-xs text-slate-500">Incomplete</span>
+                      <span className="text-xs text-slate-500">
+                        {translate(locale, "teacher.progressIncomplete")}
+                      </span>
                     </div>
                     <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
                       <span className="block font-bold tabular-nums text-slate-950">
-                        {assignment.completionRate ?? 0}%
+                        {formatProgressPercentage(locale, assignment.completionRate ?? 0)}
                       </span>
-                      <span className="text-xs text-slate-500">Completion</span>
+                      <span className="text-xs text-slate-500">
+                        {translate(locale, "teacher.progressCompletion")}
+                      </span>
                     </div>
                     <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
                       <span className="block font-bold tabular-nums text-slate-950">
-                        {assignment.recentWrongCount}/{assignment.recentAttemptCount}
+                        {formatNumber(locale, assignment.recentWrongCount)}/
+                        {formatNumber(locale, assignment.recentAttemptCount)}
                       </span>
-                      <span className="text-xs text-slate-500">Wrong / attempts</span>
+                      <span className="text-xs text-slate-500">
+                        {translate(locale, "teacher.progressWrongAttempts")}
+                      </span>
                     </div>
                   </div>
                   <div className="flex flex-wrap items-center justify-between gap-3">
                     <p className="text-xs font-medium text-slate-500">
-                      {assignment.studentsNeedingAttentionCount} students in this signal
+                      {translate(locale, "teacher.progressStudentsInSignal", {
+                        count: formatNumber(locale, assignment.studentsNeedingAttentionCount),
+                      })}
                     </p>
                     <Button asChild size="sm" variant="outline">
                       <Link
                         href={`/teacher/classrooms/${assignment.classroomId}/assignments/${assignment.assignmentId}`}
                       >
-                        Open assignment detail
+                        {translate(locale, "teacher.progressOpenAssignmentDetail")}
                       </Link>
                     </Button>
                   </div>
@@ -391,18 +473,22 @@ export default async function TeacherProgressPage() {
             <div className="p-5">
               <EmptyState
                 actionHref="/teacher/classrooms"
-                actionLabel="Review classrooms"
-                description="No current due-date, completion, or wrong-answer signals require attention."
-                title="No attention signals right now"
+                actionLabel={translate(locale, "teacher.progressReviewClassrooms")}
+                description={translate(locale, "teacher.progressNoAttentionSignalsDescription")}
+                title={translate(locale, "teacher.progressNoAttentionSignals")}
               />
             </div>
           ) : (
             <div className="p-5">
               <EmptyState
                 actionHref={summary.hasClassrooms ? "/teacher/publish" : "/teacher/classrooms"}
-                actionLabel={summary.hasClassrooms ? "Create assignment" : "Create classroom"}
-                description="Attention signals appear after reviewed Library content is assigned to active classroom students."
-                title="No assigned work yet"
+                actionLabel={
+                  summary.hasClassrooms
+                    ? translate(locale, "teacher.createAssignment")
+                    : translate(locale, "teacher.progressCreateClassroom")
+                }
+                description={translate(locale, "teacher.progressAttentionAppears")}
+                title={translate(locale, "teacher.progressNoAssignedWork")}
               />
             </div>
           )}
@@ -411,11 +497,12 @@ export default async function TeacherProgressPage() {
       <details className="teacher-panel overflow-hidden">
         <summary className="teacher-focus-ring min-h-11 cursor-pointer list-none p-5">
           <span className="block text-xl font-bold text-slate-950">
-            Recent evidence
+            {translate(locale, "teacher.progressRecentEvidence")}
           </span>
           <span className="mt-1 block text-sm leading-6 text-slate-600">
-            Optional. {formatNumber(summary.overview.recentEvidenceCount)}{" "}
-            assignment-linked session(s) in the last 14 days.
+            {translate(locale, "teacher.progressRecentEvidenceDescription", {
+              count: formatNumber(locale, summary.overview.recentEvidenceCount),
+            })}
           </span>
         </summary>
           {summary.recentEvidence.length ? (
@@ -436,12 +523,19 @@ export default async function TeacherProgressPage() {
                       </p>
                     </div>
                     <span className="rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-xs font-semibold text-emerald-800">
-                      {evidence.correctCount}/{evidence.totalAttemptCount} correct
+                      {translate(locale, "teacher.progressCorrectCount", {
+                        correct: formatNumber(locale, evidence.correctCount),
+                        total: formatNumber(locale, evidence.totalAttemptCount),
+                      })}
                     </span>
                   </div>
                   <div className="mt-3 flex flex-wrap items-center justify-between gap-3 text-xs text-slate-500">
-                    <span>{evidence.wrongCount} wrong</span>
-                    <span>{formatDateTime(evidence.latestActivityAt)}</span>
+                    <span>
+                      {translate(locale, "teacher.progressWrongCount", {
+                        count: formatNumber(locale, evidence.wrongCount),
+                      })}
+                    </span>
+                    <span>{formatProgressDateTime(locale, evidence.latestActivityAt)}</span>
                   </div>
                 </Link>
               ))}
@@ -450,19 +544,21 @@ export default async function TeacherProgressPage() {
             <div className="p-5">
               <EmptyState
                 actionHref={summary.hasAssignedWork ? "/teacher/classrooms" : "/teacher/publish"}
-                actionLabel={summary.hasAssignedWork ? "Open classrooms" : "Create assignment"}
-                description="Evidence arrives here after students start Practice from assigned work."
-                title="No evidence yet"
+                actionLabel={
+                  summary.hasAssignedWork
+                    ? translate(locale, "teacher.progressOpenClassrooms")
+                    : translate(locale, "teacher.createAssignment")
+                }
+                description={translate(locale, "teacher.progressNoEvidenceDescription")}
+                title={translate(locale, "teacher.progressNoEvidence")}
               />
             </div>
           )}
       </details>
 
-      <AssignmentProgressSection progress={assignmentProgress} />
+      <AssignmentProgressSection locale={locale} progress={assignmentProgress} />
       <p className="text-xs leading-5 text-slate-500">
-        Evidence is limited to classroom Assignments and their linked Practice
-        sessions. Private self-study and source Libraries stay outside this
-        workspace.
+        {translate(locale, "teacher.progressEvidenceBoundary")}
       </p>
     </TeacherWorkspaceShell>
   );

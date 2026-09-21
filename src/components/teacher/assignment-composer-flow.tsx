@@ -18,22 +18,32 @@ import {
   type AssignmentComposerActionState,
   type AssignmentComposerErrorField,
 } from "@/app/teacher/publish/actions";
+import { useLocale } from "@/components/i18n/locale-provider";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { assignmentErrorMessageKey } from "@/lib/teacher-assignment-error";
 
 type ComposerStage = "content" | "target" | "review";
 
-const stages: Array<{
-  id: ComposerStage;
-  label: string;
-  shortLabel: string;
-}> = [
-  { id: "content", label: "1. Select content", shortLabel: "Content" },
-  { id: "target", label: "2. Choose classroom", shortLabel: "Classroom" },
-  { id: "review", label: "3. Review and assign", shortLabel: "Review" },
-];
+const stages = [
+  {
+    id: "content",
+    labelKey: "assignment.stageSelectContent",
+    shortLabelKey: "assignment.stageContent",
+  },
+  {
+    id: "target",
+    labelKey: "assignment.stageChooseClassroom",
+    shortLabelKey: "assignment.stageClassroom",
+  },
+  {
+    id: "review",
+    labelKey: "assignment.stageReviewAssign",
+    shortLabelKey: "assignment.stageReview",
+  },
+] as const;
 
 const initialActionState: AssignmentComposerActionState = { status: "idle" };
 const AssignmentActionStateContext =
@@ -55,6 +65,7 @@ function AssignmentSubmitButtons({
 }: {
   canSubmit: boolean;
 }) {
+  const { t } = useLocale();
   const { pending } = useFormStatus();
 
   return (
@@ -66,7 +77,7 @@ function AssignmentSubmitButtons({
         type="submit"
         value="assigned"
       >
-        {pending ? "Publishing Assignment…" : "Publish Assignment"}
+        {pending ? t("assignment.publishing") : t("assignment.publish")}
       </Button>
       <Button
         className="min-h-11"
@@ -76,10 +87,10 @@ function AssignmentSubmitButtons({
         value="draft"
         variant="outline"
       >
-        {pending ? "Saving…" : "Save draft"}
+        {pending ? t("common.saving") : t("assignment.saveDraft")}
       </Button>
       <p aria-live="polite" className="sr-only">
-        {pending ? "Assignment submission is in progress." : ""}
+        {pending ? t("assignment.submissionInProgress") : ""}
       </p>
     </div>
   );
@@ -104,6 +115,7 @@ export function AssignmentComposerFlow({
   sourceType: string;
   target: ReactNode;
 }) {
+  const { t } = useLocale();
   const [actionState, formAction] = useActionState(
     publishQuestionBankAssignments,
     initialActionState,
@@ -182,7 +194,7 @@ export function AssignmentComposerFlow({
       ).length ?? 0;
 
     if (!count) {
-      setStageError("Select at least one reviewed Library question to continue.");
+      setStageError(t("assignment.selectAtLeastOne"));
       window.requestAnimationFrame(() =>
         document.getElementById("assignment-composer-stage-error")?.focus(),
       );
@@ -200,7 +212,7 @@ export function AssignmentComposerFlow({
       ).length ?? 0;
 
     if (!count) {
-      setStageError("Choose one classroom to continue.");
+      setStageError(t("assignment.chooseOneClassroom"));
       window.requestAnimationFrame(() =>
         document.getElementById("assignment-composer-stage-error")?.focus(),
       );
@@ -226,7 +238,7 @@ export function AssignmentComposerFlow({
       />
       <input name="sourceType" type="hidden" value={sourceType} />
       <AssignmentActionStateContext.Provider value={actionState}>
-      <nav aria-label="Assignment creation progress" className="teacher-panel p-3">
+      <nav aria-label={t("assignment.creationProgress")} className="teacher-panel p-3">
         <ol className="grid grid-cols-3 gap-2">
           {stages.map((item) => {
             const isCurrent = item.id === stage;
@@ -252,8 +264,8 @@ export function AssignmentComposerFlow({
                   onClick={() => changeStage(item.id)}
                   type="button"
                 >
-                  <span className="hidden sm:inline">{item.label}</span>
-                  <span className="sm:hidden">{item.shortLabel}</span>
+                  <span className="hidden sm:inline">{t(item.labelKey)}</span>
+                  <span className="sm:hidden">{t(item.shortLabelKey)}</span>
                 </button>
               </li>
             );
@@ -268,7 +280,9 @@ export function AssignmentComposerFlow({
           role="alert"
           tabIndex={-1}
         >
-          <p className="font-semibold">{actionState.message}</p>
+          <p className="font-semibold">
+            {t(assignmentErrorMessageKey(actionState.code))}
+          </p>
         </div>
       ) : null}
 
@@ -293,12 +307,12 @@ export function AssignmentComposerFlow({
           id="assignment-composer-content-heading"
           tabIndex={-1}
         >
-          Select Assignment content
+          {t("assignment.selectContent")}
         </h2>
         {content}
         <div className="flex justify-end">
           <Button className="min-h-11" onClick={continueFromContent} type="button">
-            Continue to classroom
+            {t("assignment.continueToClassroom")}
           </Button>
         </div>
       </section>
@@ -313,7 +327,7 @@ export function AssignmentComposerFlow({
           id="assignment-composer-target-heading"
           tabIndex={-1}
         >
-          Choose Assignment classroom
+          {t("assignment.chooseAssignmentClassroom")}
         </h2>
         {target}
         <div className="flex flex-wrap items-center justify-between gap-3">
@@ -323,10 +337,10 @@ export function AssignmentComposerFlow({
             type="button"
             variant="outline"
           >
-            Back to content
+            {t("assignment.backToContent")}
           </Button>
           <Button className="min-h-11" onClick={continueFromTarget} type="button">
-            Continue to review
+            {t("assignment.continueToReview")}
           </Button>
         </div>
       </section>
@@ -341,7 +355,7 @@ export function AssignmentComposerFlow({
           id="assignment-composer-review-heading"
           tabIndex={-1}
         >
-          Review and create Assignment
+          {t("assignment.reviewAndCreate")}
         </h2>
         {review}
         <AssignmentSubmitButtons
@@ -354,7 +368,7 @@ export function AssignmentComposerFlow({
             type="button"
             variant="outline"
           >
-            Back to classroom
+            {t("assignment.backToClassroom")}
           </Button>
         </div>
       </section>
@@ -374,6 +388,7 @@ function fieldError(
 
 export function AssignmentDetailsFields() {
   const actionState = useContext(AssignmentActionStateContext);
+  const { t } = useLocale();
   const titleError = fieldError(actionState, "title");
   const dueAtError = fieldError(actionState, "dueAt");
   const instructionsError = fieldError(actionState, "instructions");
@@ -381,19 +396,19 @@ export function AssignmentDetailsFields() {
   return (
     <>
       <div className="space-y-2">
-        <Label htmlFor="title">Title</Label>
+        <Label htmlFor="title">{t("assignment.title")}</Label>
         <Input
           aria-describedby={titleError}
           aria-invalid={titleError ? true : undefined}
           id="title"
           maxLength={180}
           name="title"
-          placeholder="Applications of Integration practice"
+          placeholder={t("assignment.titlePlaceholder")}
           required
         />
       </div>
       <div className="space-y-2">
-        <Label htmlFor="dueAt">Due date optional</Label>
+        <Label htmlFor="dueAt">{t("assignment.dueDateOptional")}</Label>
         <Input
           aria-describedby={dueAtError}
           aria-invalid={dueAtError ? true : undefined}
@@ -404,10 +419,10 @@ export function AssignmentDetailsFields() {
       </div>
       <details className="rounded-lg border border-slate-200 bg-slate-50">
         <summary className="teacher-focus-ring min-h-11 cursor-pointer px-4 py-3 text-sm font-bold text-slate-800">
-          Add optional instructions
+          {t("assignment.addInstructions")}
         </summary>
         <div className="border-t border-slate-200 p-4">
-          <Label htmlFor="instructions">Instructions</Label>
+          <Label htmlFor="instructions">{t("assignment.instructions")}</Label>
           <Textarea
             aria-describedby={instructionsError}
             aria-invalid={instructionsError ? true : undefined}
@@ -415,7 +430,7 @@ export function AssignmentDetailsFields() {
             id="instructions"
             maxLength={4000}
             name="instructions"
-            placeholder="Complete the selected questions. Start Practice from My Work if you need guided review."
+            placeholder={t("assignment.instructionsPlaceholder")}
             rows={4}
           />
         </div>

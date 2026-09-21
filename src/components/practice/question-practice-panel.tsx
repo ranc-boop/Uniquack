@@ -8,6 +8,7 @@ import {
   OptionText,
   SolutionText,
 } from "@/components/math-content";
+import { useLocale } from "@/components/i18n/locale-provider";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -56,15 +57,22 @@ function answerValue(answer: AnswerState | undefined) {
   return Array.isArray(answer) ? answer.join(", ") : answer ?? "";
 }
 
-function resultBadge(result: PracticeGradeResult | undefined) {
+function resultBadge(
+  result: PracticeGradeResult | undefined,
+  t: ReturnType<typeof useLocale>["t"],
+) {
   if (!result) return null;
   if (result.isCorrect === true) {
-    return <Badge className="border-transparent bg-emerald-600 text-white hover:bg-emerald-600">correct</Badge>;
+    return (
+      <Badge className="border-transparent bg-emerald-600 text-white hover:bg-emerald-600">
+        {t("practice.correct")}
+      </Badge>
+    );
   }
   if (result.isCorrect === false) {
-    return <Badge variant="destructive">incorrect</Badge>;
+    return <Badge variant="destructive">{t("practice.incorrect")}</Badge>;
   }
-  return <Badge variant="outline">manual review</Badge>;
+  return <Badge variant="outline">{t("practice.manualReview")}</Badge>;
 }
 
 function AnswerInput({
@@ -72,12 +80,14 @@ function AnswerInput({
   inputId,
   onChange,
   question,
+  t,
   value,
 }: {
   disabled?: boolean;
   inputId: string;
   onChange: (value: AnswerState) => void;
   question: PracticeRecommendation;
+  t: ReturnType<typeof useLocale>["t"];
   value: AnswerState | undefined;
 }) {
   if (question.questionType === "mcq" && question.options.length) {
@@ -116,13 +126,18 @@ function AnswerInput({
       id={inputId}
       maxLength={PRACTICE_INPUT_LIMITS.ANSWER_CHARS}
       onChange={(event) => onChange(event.target.value)}
-      placeholder={question.questionType === "fill_blank" ? "Enter your final answer" : "Write your response"}
+      placeholder={
+        question.questionType === "fill_blank"
+          ? t("practice.finalAnswerPlaceholder")
+          : t("practice.responsePlaceholder")
+      }
       value={answerValue(value)}
     />
   );
 }
 
 export function QuestionPracticePanel({ question, solutionContent }: QuestionPracticePanelProps) {
+  const { formatNumber, t } = useLocale();
   const [recommendation, setRecommendation] = useState<PracticeRecommendResponse | null>(null);
   const [answer, setAnswer] = useState<AnswerState>("");
   const [hints, setHints] = useState<string[]>([]);
@@ -179,8 +194,8 @@ export function QuestionPracticePanel({ question, solutionContent }: QuestionPra
     startTransition(async () => {
       try {
         await ensureRound();
-      } catch (caught) {
-        setError(caught instanceof Error ? caught.message : String(caught));
+      } catch {
+        setError(t("common.requestFailed"));
       }
     });
     // Entering question practice mode should immediately attach the question to a session.
@@ -204,8 +219,8 @@ export function QuestionPracticePanel({ question, solutionContent }: QuestionPra
           method: "POST",
         });
         setHints((current) => [...current, response.hint]);
-      } catch (caught) {
-        setError(caught instanceof Error ? caught.message : String(caught));
+      } catch {
+        setError(t("common.requestFailed"));
       }
     });
   }
@@ -227,8 +242,8 @@ export function QuestionPracticePanel({ question, solutionContent }: QuestionPra
         if (!submittedResult) throw new Error("The submitted answer could not be graded.");
         setResult(submittedResult);
         setShowAnswer(true);
-      } catch (caught) {
-        setError(caught instanceof Error ? caught.message : String(caught));
+      } catch {
+        setError(t("common.requestFailed"));
       }
     });
   }
@@ -243,8 +258,8 @@ export function QuestionPracticePanel({ question, solutionContent }: QuestionPra
     startTransition(async () => {
       try {
         await createRound();
-      } catch (caught) {
-        setError(caught instanceof Error ? caught.message : String(caught));
+      } catch {
+        setError(t("common.requestFailed"));
       }
     });
   }
@@ -254,12 +269,12 @@ export function QuestionPracticePanel({ question, solutionContent }: QuestionPra
       <CardHeader>
         <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
           <div>
-            <CardTitle className="text-base">Practice this question</CardTitle>
+            <CardTitle className="text-base">{t("practice.questionPracticeTitle")}</CardTitle>
             <p className="mt-1 text-sm text-muted-foreground">
-               Practice starts automatically. Your answer is checked in the current practice round, then the saved result is shown here.
+              {t("practice.questionPracticeDescription")}
             </p>
           </div>
-          {resultBadge(result)}
+          {resultBadge(result, t)}
         </div>
       </CardHeader>
       <CardContent className="space-y-4">
@@ -272,17 +287,20 @@ export function QuestionPracticePanel({ question, solutionContent }: QuestionPra
         {!recommendation ? (
           <div className="flex items-center gap-2 rounded-md border bg-background p-4 text-sm text-muted-foreground">
             <span aria-hidden="true" className="loading-indicator-spinner size-4" />
-            Preparing this question in your current practice session...
+            {t("practice.preparingQuestion")}
           </div>
         ) : (
           <div className="space-y-4">
             <div className="space-y-2">
-              <Label htmlFor={`detail-answer-${question.id}`}>Your answer</Label>
+              <Label htmlFor={`detail-answer-${question.id}`}>
+                {t("practice.yourAnswer")}
+              </Label>
               <AnswerInput
                 disabled={showAnswer}
                 inputId={`detail-answer-${question.id}`}
                 onChange={setAnswer}
                 question={question}
+                t={t}
                 value={answer}
               />
             </div>
@@ -292,12 +310,12 @@ export function QuestionPracticePanel({ question, solutionContent }: QuestionPra
               </Button>
                <Button disabled={isPending || showAnswer || !canSubmit} onClick={submitAnswer} type="button">
                 {isPending ? <span aria-hidden="true" className="loading-indicator-spinner mr-2 size-4" /> : null}
-                Submit
+                {t("practice.submit")}
               </Button>
               {showAnswer ? (
                 <Button onClick={reset} type="button" variant="outline">
                   <RotateCcw className="mr-2 size-4" aria-hidden="true" />
-                  Try again
+                  {t("practice.tryAgain")}
                 </Button>
               ) : null}
             </div>
@@ -308,7 +326,9 @@ export function QuestionPracticePanel({ question, solutionContent }: QuestionPra
           <div className="space-y-2">
             {hints.map((hint, index) => (
               <div className="rounded-md border bg-background p-3 text-sm" key={`${question.id}-hint-${index}`}>
-                <span className="font-medium">Hint {index + 1}: </span>
+                <span className="font-medium">
+                  {t("practice.hintNumber", { count: formatNumber(index + 1) })}:{" "}
+                </span>
                 <FeedbackText className="inline border-none bg-transparent p-0 text-muted-foreground" compact inline value={hint} />
               </div>
             ))}
@@ -318,16 +338,20 @@ export function QuestionPracticePanel({ question, solutionContent }: QuestionPra
         {showAnswer ? (
           <div className="space-y-4 rounded-md border bg-background p-4">
             <div>
-              <p className="text-sm font-medium">{question.questionType === "mcq" ? "Result" : "Answer"}</p>
+              <p className="text-sm font-medium">
+                {question.questionType === "mcq" ? t("practice.result") : t("practice.answer")}
+              </p>
               <FeedbackText className="mt-2 border-none bg-transparent p-0 text-muted-foreground" compact value={result?.explanation ?? ""} />
             </div>
             {solutionContent ? (
               <div className="space-y-2">
-                <p className="text-sm font-medium">Solution</p>
+                <p className="text-sm font-medium">{t("practice.solution")}</p>
                 <SolutionText value={solutionContent} />
               </div>
             ) : (
-              <p className="text-sm text-muted-foreground">No solution content is available for this question yet.</p>
+              <p className="text-sm text-muted-foreground">
+                {t("practice.solutionUnavailable")}
+              </p>
             )}
           </div>
         ) : null}

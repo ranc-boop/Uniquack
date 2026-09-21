@@ -11,6 +11,8 @@ import {
   type MouseEvent,
 } from "react";
 
+import { useLocale } from "@/components/i18n/locale-provider";
+
 export type RoutePendingLinkProps = Omit<
   ComponentPropsWithoutRef<typeof Link>,
   "href"
@@ -30,15 +32,17 @@ export const RoutePendingLink = forwardRef<
   onClick,
   onFocus,
   onMouseEnter,
-  pendingLabel = "Opening…",
+  pendingLabel,
   target,
   ...props
 }, ref) {
+  const { t } = useLocale();
   const router = useRouter();
   const [pendingHref, setPendingHref] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
   const waiting = isPending && pendingHref === href;
   const showInlineFeedback = feedback === "inline" && waiting;
+  const resolvedPendingLabel = pendingLabel ?? t("common.opening");
 
   function prefetchTarget() {
     router.prefetch(href);
@@ -99,7 +103,7 @@ export const RoutePendingLink = forwardRef<
         />
       ) : null}
       {children}
-      {showInlineFeedback ? <span aria-live="polite" className="sr-only" role="status">Loading {pendingLabel}</span> : null}
+      {showInlineFeedback ? <span aria-live="polite" className="sr-only" role="status">{t("common.loading")} {resolvedPendingLabel}</span> : null}
     </Link>
   );
 });

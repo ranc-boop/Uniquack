@@ -5,6 +5,8 @@ import { FormSubmitButton } from "@/components/form-submit-button";
 import { Button } from "@/components/ui/button";
 import { QuestionBoundaryGuardCard } from "@/components/ai-pdf-dashboard/question-boundary-guard-card";
 import { friendlyAIPdfPhaseLabel } from "@/lib/ai-pdf-import/display";
+import { formatDateTime, type Locale } from "@/lib/i18n/locale";
+import { translate } from "@/lib/i18n/messages";
 import type { BankImportBatchSummary } from "@/lib/question-banks";
 
 import {
@@ -12,8 +14,8 @@ import {
   BankSectionHeader,
 } from "./bank-ui";
 
-function formatDate(value: string | null) {
-  return value ? new Date(value).toLocaleString() : "Unknown";
+function formatDate(value: string | null, locale: Locale) {
+  return value ? formatDateTime(locale, value) : translate(locale, "common.unknown");
 }
 
 function asRecord(value: unknown): Record<string, unknown> {
@@ -44,7 +46,7 @@ function uniqueStrings(values: string[]) {
   return Array.from(new Set(values.map((value) => value.trim()).filter(Boolean)));
 }
 
-function safeTeacherImportText(value: string | null) {
+function safeTeacherImportText(value: string | null, locale: Locale) {
   if (!value) return null;
 
   if (
@@ -52,17 +54,17 @@ function safeTeacherImportText(value: string | null) {
       value,
     )
   ) {
-    return "The AI service is temporarily busy. Your work is safe, and you can retry later.";
+    return translate(locale, "teacherLibrary.aiServiceBusy");
   }
 
   if (/\b(?:timeout|timed out|deadline exceeded)\b/i.test(value)) {
-    return "This is taking longer than usual. Your work is safe, and you can retry later.";
+    return translate(locale, "teacherLibrary.aiServiceSlow");
   }
 
   return value.slice(0, 500);
 }
 
-function summarizeImportBatch(batch: BankImportBatchSummary) {
+function summarizeImportBatch(batch: BankImportBatchSummary, locale: Locale) {
   const summary = asRecord(batch.summary);
   const aiPdfImport = asRecord(summary.aiPdfImport);
   const createdQuestions = Array.isArray(summary.createdQuestions)
@@ -74,7 +76,7 @@ function summarizeImportBatch(batch: BankImportBatchSummary) {
     createdQuestions.length;
   const warnings = uniqueStrings(
     [...asStringList(summary.validationErrorReasons), ...asStringList(aiPdfImport.warnings)]
-      .map((warning) => safeTeacherImportText(warning))
+      .map((warning) => safeTeacherImportText(warning, locale))
       .filter((warning): warning is string => Boolean(warning)),
   ).slice(0, 3);
   const retryable = summary.retryable === true || aiPdfImport.retryable === true;
@@ -83,13 +85,16 @@ function summarizeImportBatch(batch: BankImportBatchSummary) {
   const fileLabel =
     asString(aiPdfImport.fileName) ??
     asString(summary.fileName) ??
-    (batch.source_type === "ai_pdf" ? "Private PDF source" : "Imported source");
+    (batch.source_type === "ai_pdf"
+      ? translate(locale, "teacherLibrary.privatePdfSource")
+      : translate(locale, "teacherLibrary.importedSource"));
   const detail = safeTeacherImportText(
     asString(aiPdfImport.detail) ??
     asString(summary.detail) ??
     (retryable
-      ? "The AI service is temporarily busy. Your work is safe, and you can retry later."
+      ? translate(locale, "teacherLibrary.aiServiceBusy")
       : null),
+    locale,
   );
 
   return {
@@ -110,7 +115,7 @@ function asArray(value: unknown): unknown[] {
   return Array.isArray(value) ? value : [];
 }
 
-function coverageRecoveryState(batch: BankImportBatchSummary) {
+function coverageRecoveryState(batch: BankImportBatchSummary, locale: Locale) {
   const summary = asRecord(batch.summary);
   const ai = asRecord(summary.aiPdfImport);
   const plan = asRecord(ai.coverageRecoveryPlan);
@@ -124,15 +129,15 @@ function coverageRecoveryState(batch: BankImportBatchSummary) {
   const status = asString(execution.status);
   const copy =
     status === "queued"
-      ? "Targeted recovery is waiting for available AI capacity."
+      ? translate(locale, "teacherLibrary.recoveryQueued")
       : status === "processing"
-        ? "The system is rechecking the missing sections."
+        ? translate(locale, "teacherLibrary.recoveryProcessing")
         : status === "completed"
-          ? "Additional Review Drafts were recovered for teacher review."
+          ? translate(locale, "teacherLibrary.recoveryCompleted")
           : status === "completed_no_new_drafts"
-            ? "The missing sections were rechecked, but no additional usable drafts were found."
+            ? translate(locale, "teacherLibrary.recoveryNoNewDrafts")
             : eligible
-              ? "Some likely question pages were not represented in the first extraction."
+              ? translate(locale, "teacherLibrary.recoverySomePages")
               : null;
   return { copy, eligible, status };
 }
@@ -141,33 +146,34 @@ function importStatusLabel(
   batch: BankImportBatchSummary,
   retryable: boolean,
   phase: string,
+  locale: Locale,
 ) {
   if (retryable) {
-    return "Retryable import";
+    return translate(locale, "teacherLibrary.retryableImport");
   }
 
   if (batch.status === "imported") {
-    return "Imported";
+    return translate(locale, "teacherLibrary.importedStatus");
   }
 
   if (batch.status === "failed") {
-    return "Failed";
+    return translate(locale, "teacherLibrary.failedStatus");
   }
 
   if (batch.status === "validating") {
-    return "Processing";
+    return translate(locale, "teacherLibrary.processingStatus");
   }
 
   if (phase === "queued") {
-    return "Queued";
+    return translate(locale, "teacherLibrary.queuedStatus");
   }
 
   if (phase === "queue_processing") {
-    return "Processing";
+    return translate(locale, "teacherLibrary.processingStatus");
   }
 
   if (batch.status === "draft" || batch.status === "ready") {
-    return "Pending";
+    return translate(locale, "teacherLibrary.pendingStatus");
   }
 
   return batch.status;
@@ -214,22 +220,24 @@ export function RecentBankImportsPanel({
   canQueueCoverageRecovery = false,
   coverageRecoveryAction,
   importBatches,
+  locale,
 }: {
   bankName?: string;
   canQueueCoverageRecovery?: boolean;
   coverageRecoveryAction?: (formData: FormData) => void | Promise<void>;
   importBatches: BankImportBatchSummary[];
+  locale: Locale;
 }) {
   return (
     <aside className="rounded-lg border border-slate-200/80 bg-white/85 shadow-[0_18px_48px_-40px_rgba(15,23,42,0.7)] ring-1 ring-slate-950/5 backdrop-blur">
       <BankSectionHeader
-        title="Recent AI Parsing status"
+        title={translate(locale, "teacherLibrary.recentImportsTitle")}
       />
       <div className="space-y-3 p-5">
         {importBatches.length ? (
           importBatches.map((batch) => {
-            const status = summarizeImportBatch(batch);
-            const recovery = coverageRecoveryState(batch);
+            const status = summarizeImportBatch(batch, locale);
+            const recovery = coverageRecoveryState(batch, locale);
             const reviewHref = batch.target_bank_id
               ? `/teacher/banks/${batch.target_bank_id}/review`
               : null;
@@ -246,35 +254,43 @@ export function RecentBankImportsPanel({
                         {status.fileLabel}
                       </p>
                       <p className="mt-1 text-xs text-slate-500">
-                        {formatDate(batch.created_at)}
+                        {formatDate(batch.created_at, locale)}
                       </p>
                     </div>
                     <BankBadge tone={importStatusTone(batch, status.retryable, status.phase)}>
-                      {importStatusLabel(batch, status.retryable, status.phase)}
+                      {importStatusLabel(batch, status.retryable, status.phase, locale)}
                     </BankBadge>
                   </div>
 
                   <dl className="grid gap-2 text-xs sm:grid-cols-2">
                     <div className="rounded-lg border border-slate-200 bg-slate-50 p-2">
-                      <dt className="font-semibold text-slate-500">Target Library</dt>
+                      <dt className="font-semibold text-slate-500">
+                        {translate(locale, "teacherLibrary.targetLibrary")}
+                      </dt>
                       <dd className="mt-1 break-words font-bold text-slate-900">
-                        {bankName ?? "Selected Library"}
+                        {bankName ?? translate(locale, "teacherLibrary.selectedLibrary")}
                       </dd>
                     </div>
                     <div className="rounded-lg border border-slate-200 bg-slate-50 p-2">
-                      <dt className="font-semibold text-slate-500">Phase</dt>
+                      <dt className="font-semibold text-slate-500">
+                        {translate(locale, "teacherLibrary.phase")}
+                      </dt>
                       <dd className="mt-1 break-words font-bold text-slate-900">
                         {friendlyAIPdfPhaseLabel(status.phase)}
                       </dd>
                     </div>
                     <div className="rounded-lg border border-slate-200 bg-slate-50 p-2">
-                      <dt className="font-semibold text-slate-500">Drafts</dt>
+                      <dt className="font-semibold text-slate-500">
+                        {translate(locale, "teacherLibrary.drafts")}
+                      </dt>
                       <dd className="mt-1 font-bold text-slate-900">
                         {status.draftCount}
                       </dd>
                     </div>
                     <div className="rounded-lg border border-slate-200 bg-slate-50 p-2">
-                      <dt className="font-semibold text-slate-500">Warnings</dt>
+                      <dt className="font-semibold text-slate-500">
+                        {translate(locale, "teacherLibrary.warnings")}
+                      </dt>
                       <dd className="mt-1 font-bold text-slate-900">
                         {status.warningCount}
                       </dd>
@@ -283,15 +299,13 @@ export function RecentBankImportsPanel({
 
                   {status.retryable ? (
                     <p className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs font-semibold leading-5 text-amber-900">
-                      This run could not be completed. Nothing was published or
-                      assigned; retry later without uploading the file again.
+                      {translate(locale, "teacherLibrary.retryableMessage")}
                     </p>
                   ) : null}
 
                   {status.zeroDrafts ? (
                     <p className="rounded-lg border border-slate-200 bg-slate-50 p-3 text-xs font-semibold leading-5 text-slate-700">
-                      Zero drafts were created. Review the status detail before
-                      retrying or using a smaller source file.
+                      {translate(locale, "teacherLibrary.zeroDrafts")}
                     </p>
                   ) : null}
 
@@ -312,11 +326,11 @@ export function RecentBankImportsPanel({
                           <input name="bankId" type="hidden" value={batch.target_bank_id ?? ""} />
                           <input name="batchId" type="hidden" value={batch.id} />
                           <FormSubmitButton
-                            pendingLabel="Queueing recovery..."
+                            pendingLabel={translate(locale, "teacherLibrary.queueRecoveryPending")}
                             size="sm"
                             variant="outline"
                           >
-                            Recheck missing sections
+                            {translate(locale, "teacherLibrary.recheckMissingSections")}
                           </FormSubmitButton>
                         </form>
                       ) : null}
@@ -330,7 +344,9 @@ export function RecentBankImportsPanel({
 
                   {status.warnings.length ? (
                     <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs leading-5 text-amber-900">
-                        <p className="font-bold">Warnings to inspect</p>
+                        <p className="font-bold">
+                          {translate(locale, "teacherLibrary.warningsToInspect")}
+                        </p>
                         <ul className="mt-1 list-disc space-y-1 pl-4">
                           {status.warnings.map((warning) => (
                             <li key={warning}>
@@ -343,7 +359,9 @@ export function RecentBankImportsPanel({
 
                   {reviewHref ? (
                     <Button asChild size="sm" variant="outline">
-                      <Link href={reviewHref}>Open Review Drafts</Link>
+                      <Link href={reviewHref}>
+                        {translate(locale, "teacherLibrary.openReviewDrafts")}
+                      </Link>
                     </Button>
                   ) : null}
                 </div>
@@ -352,8 +370,7 @@ export function RecentBankImportsPanel({
           })
         ) : (
           <p className="rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm text-slate-600">
-            No Library imports yet. Start with AI Parsing, then review
-            drafts before adding anything to the bank.
+            {translate(locale, "teacherLibrary.noLibraryImports")}
           </p>
         )}
       </div>

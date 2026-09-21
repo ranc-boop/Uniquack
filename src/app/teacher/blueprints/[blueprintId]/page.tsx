@@ -8,6 +8,8 @@ import { FormSubmitButton } from "@/components/form-submit-button";
 import { TeacherWorkspaceShell } from "@/components/teacher/teacher-workspace-shell";
 import { Button } from "@/components/ui/button";
 import { requireTeacher } from "@/lib/auth/guards";
+import { formatDate as formatLocaleDate } from "@/lib/i18n/locale";
+import { getRequestLocale } from "@/lib/i18n/server";
 import {
   AIProviderJobQueueSchemaMissingError,
   listAIProviderJobsForResource,
@@ -79,16 +81,6 @@ function nestedText(value: unknown, key: string, nestedKey = "teacherMix") {
   return stringValue(asRecord(asRecord(value)[key])[nestedKey]);
 }
 
-function formatDate(value: string | null) {
-  if (!value) return "Not yet";
-
-  return new Intl.DateTimeFormat("en", {
-    day: "numeric",
-    month: "short",
-    year: "numeric",
-  }).format(new Date(value));
-}
-
 function blueprintGenerationSummary(value: unknown) {
   const summary = asRecord(value);
   const generation = asRecord(summary.blueprintGeneration);
@@ -114,6 +106,7 @@ export default async function TeacherBlueprintDetailPage({
   }>;
 }) {
   await requireTeacher();
+  const locale = await getRequestLocale();
   const { blueprintId } = await params;
   const query = await searchParams;
   const supabase = await createClient();
@@ -259,7 +252,7 @@ export default async function TeacherBlueprintDetailPage({
               />
               <BlueprintDetailMetric
                 label="Created / updated"
-                value={`${formatDate(blueprint.created_at)} / ${formatDate(blueprint.updated_at)}`}
+                value={`${blueprint.created_at ? formatLocaleDate(locale, blueprint.created_at, { day: "numeric", month: "short", year: "numeric" }) : "Not yet"} / ${blueprint.updated_at ? formatLocaleDate(locale, blueprint.updated_at, { day: "numeric", month: "short", year: "numeric" }) : "Not yet"}`}
               />
             </section>
 
@@ -552,7 +545,11 @@ export default async function TeacherBlueprintDetailPage({
                             {batch.status}
                           </BlueprintBadge>
                           <span className="text-xs font-semibold text-slate-500">
-                            {formatDate(batch.created_at)}
+                            {formatLocaleDate(locale, batch.created_at, {
+                              day: "numeric",
+                              month: "short",
+                              year: "numeric",
+                            })}
                           </span>
                         </div>
                         <p className="mt-2 text-sm font-semibold text-slate-900">

@@ -147,14 +147,14 @@ async function main() {
     "bank import review smoke requires the strict forward-only Review lineage gate",
   );
   assert(
-    detailPage.includes('label: "Import"') &&
+    detailPage.includes('label: t("teacherLibrary.import")') &&
       importsPage.includes("TeacherBankImportTransition") &&
       importsPage.includes("BankManualQuestionForm") &&
       importsPage.includes("BatchImportJsonPanelLoader") &&
       importsPage.includes("TeacherPdfBurstUpload") &&
-      importUi.includes("Recent AI Parsing status") &&
-      importsPage.includes("Imported questions are private Review Drafts") &&
-      reviewPage.includes("Approve current page") &&
+      importUi.includes('translate(locale, "teacherLibrary.recentImportsTitle")') &&
+      importsPage.includes('t("teacherLibrary.importedPrivateReviewDrafts"') &&
+      reviewPage.includes('t("teacherLibrary.approveCurrentPage"') &&
       questionsPage.includes("QuestionManagementWorkbench") &&
       questionsPage.includes("search_official_public_questions_v2") &&
       bankActions.includes('rpc("approve_library_questions_v2"'),

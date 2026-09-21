@@ -14,6 +14,8 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { requireSuperAdmin } from "@/lib/auth/guards";
+import { formatDate } from "@/lib/i18n/locale";
+import { getRequestLocale } from "@/lib/i18n/server";
 import { createClient } from "@/lib/supabase/server";
 
 import { governLegacyPublicBank } from "../governance-actions";
@@ -35,6 +37,7 @@ export default async function AdminBankGovernancePage({
     searchParams,
     createClient(),
   ]);
+  const locale = await getRequestLocale();
   const q = (params.q ?? "").trim();
   const page = Math.max(1, Number.parseInt(params.page ?? "1", 10) || 1);
   const pageSize = 25;
@@ -194,9 +197,7 @@ export default async function AdminBankGovernancePage({
                         </span>
                       </TableCell>
                       <TableCell>
-                        {new Intl.DateTimeFormat("en", {
-                          dateStyle: "medium",
-                        }).format(new Date(bank.updated_at))}
+                        {formatDate(locale, bank.updated_at, { dateStyle: "medium" })}
                       </TableCell>
                       <TableCell>
                         <form

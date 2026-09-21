@@ -1,4 +1,7 @@
+"use client";
+
 import { LoadingIndicator } from "@/components/loading-indicator";
+import { useLocale } from "@/components/i18n/locale-provider";
 import { PracticeLoadingBlock } from "@/components/practice/practice-loading";
 
 export function PracticeWorkspaceSkeleton({
@@ -6,6 +9,8 @@ export function PracticeWorkspaceSkeleton({
 }: {
   mode?: "assignment" | "starter";
 }) {
+  const { t } = useLocale();
+
   return (
     <div
       aria-busy="true"
@@ -13,7 +18,7 @@ export function PracticeWorkspaceSkeleton({
       className="mx-[calc(50%-50vw)] grid min-h-[calc(100vh-7rem)] w-screen gap-4 px-3 sm:px-4 xl:grid-cols-[19rem_minmax(0,1fr)_3rem]"
       role="status"
     >
-      <span className="sr-only">Loading practice workspace…</span>
+      <span className="sr-only">{t("practice.loadingWorkspace")}</span>
       <aside className="hidden min-h-full border-r border-slate-200 bg-slate-50/80 px-4 py-6 xl:block">
         <PracticeLoadingBlock className="h-6 w-24 rounded" />
         <div className="mt-9 flex h-14 items-center gap-3 rounded-xl bg-white px-3 ring-1 ring-slate-200">
@@ -38,7 +43,7 @@ export function PracticeWorkspaceSkeleton({
       <main className="relative min-w-0 px-0 xl:px-2">
         <section className="flex min-h-[calc(100vh-10rem)] items-center justify-center py-10">
           <div className="mx-auto w-full max-w-6xl space-y-8 text-center">
-            <LoadingIndicator className="justify-center" label="Loading practice workspace..." size="md" />
+            <LoadingIndicator className="justify-center" label={t("practice.loadingWorkspace")} size="md" />
             <div className="space-y-3">
               <PracticeLoadingBlock className="mx-auto h-6 w-28 rounded-full" />
               <PracticeLoadingBlock className="mx-auto h-12 w-80 max-w-full rounded-xl" />

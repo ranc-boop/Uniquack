@@ -3,6 +3,8 @@
 import { usePathname, useSearchParams } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 
+import { useLocale } from "@/components/i18n/locale-provider";
+
 type ProgressPhase = "complete" | "idle" | "loading";
 
 function isPlainInternalNavigation(event: MouseEvent, anchor: HTMLAnchorElement) {
@@ -33,6 +35,7 @@ function isPlainInternalNavigation(event: MouseEvent, anchor: HTMLAnchorElement)
 }
 
 export function RouteTransitionFeedback() {
+  const { t } = useLocale();
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const [pendingTarget, setPendingTarget] = useState<string | null>(null);
@@ -91,7 +94,7 @@ export function RouteTransitionFeedback() {
       role="status"
     >
       <span className="route-progress-bar" />
-      <span className="sr-only">{phase === "loading" ? "Loading page" : ""}</span>
+      <span className="sr-only">{phase === "loading" ? t("common.loadingPage") : ""}</span>
     </div>
   );
 }

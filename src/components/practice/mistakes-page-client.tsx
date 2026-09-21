@@ -5,6 +5,7 @@ import { useEffect, useState, useTransition } from "react";
 import { LoaderCircle, Play, RefreshCw } from "lucide-react";
 
 import { FeedbackText, QuestionText } from "@/components/math-content";
+import { useLocale } from "@/components/i18n/locale-provider";
 import { StudentPendingLink } from "@/components/student/student-pending-link";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -36,12 +37,13 @@ async function jsonRequest<T>(url: string, init?: RequestInit): Promise<T> {
   return payload;
 }
 
-function answerPreview(answer: string | string[]) {
+function answerPreview(answer: string | string[], emptyLabel: string) {
   const value = Array.isArray(answer) ? answer.join(", ") : answer;
-  return value.trim() || "No saved answer.";
+  return value.trim() || emptyLabel;
 }
 
 export function MistakesPageClient() {
+  const { formatDateTime, formatNumber, t } = useLocale();
   const router = useRouter();
   const [wrongQuestions, setWrongQuestions] = useState<PracticeWrongQuestionView[]>([]);
   const [busyId, setBusyId] = useState<string | null>(null);
@@ -58,8 +60,8 @@ export function MistakesPageClient() {
         "/api/practice/wrong-questions",
       );
       setWrongQuestions(payload.wrongQuestions);
-    } catch (caught) {
-      setError(caught instanceof Error ? caught.message : String(caught));
+    } catch {
+      setError(t("common.requestFailed"));
     } finally {
       setListLoading(false);
       setRefreshing(false);
@@ -73,13 +75,13 @@ export function MistakesPageClient() {
           "/api/practice/wrong-questions",
         );
         setWrongQuestions(payload.wrongQuestions);
-      } catch (caught) {
-        setError(caught instanceof Error ? caught.message : String(caught));
+      } catch {
+        setError(t("common.requestFailed"));
       } finally {
         setListLoading(false);
       }
     });
-  }, []);
+  }, [t]);
 
   async function ensureSession() {
     const sessionsPayload = await jsonRequest<{
@@ -122,8 +124,8 @@ export function MistakesPageClient() {
           JSON.stringify(round),
         );
         router.push("/practice");
-      } catch (caught) {
-        setError(caught instanceof Error ? caught.message : String(caught));
+      } catch {
+        setError(t("common.requestFailed"));
         setBusyId(null);
       }
     });
@@ -135,16 +137,16 @@ export function MistakesPageClient() {
         <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
           <div className="space-y-2">
             <p className="student-eyebrow">
-              Mistakes
+              {t("mistakes.eyebrow")}
             </p>
-            <h1 className="text-3xl font-bold tracking-tight text-slate-950">Active missed questions</h1>
+            <h1 className="text-3xl font-bold tracking-tight text-slate-950">{t("mistakes.title")}</h1>
             <p className="max-w-2xl text-base leading-7 text-slate-600">
-              These records use saved snapshots, so you can still review context even if a source question changes later.
+              {t("mistakes.description")}
             </p>
           </div>
           <div className="flex flex-col gap-2 sm:flex-row">
             <Button asChild variant="outline">
-              <StudentPendingLink href="/questions">Question Bank</StudentPendingLink>
+              <StudentPendingLink href="/questions">{t("mistakes.questionBank")}</StudentPendingLink>
             </Button>
             <Button
               disabled={isPending || refreshing}
@@ -157,7 +159,7 @@ export function MistakesPageClient() {
               ) : (
                 <RefreshCw className="mr-2 size-4" aria-hidden="true" />
               )}
-              Refresh
+              {t("mistakes.refresh")}
             </Button>
           </div>
         </div>
@@ -171,7 +173,7 @@ export function MistakesPageClient() {
 
       {listLoading ? (
         <div aria-busy="true" className="grid gap-4" role="status">
-          <span className="sr-only">Loading missed questions…</span>
+          <span className="sr-only">{t("mistakes.loading")}</span>
           {Array.from({ length: 3 }).map((_, index) => (
             <Card className="student-panel" key={index}>
               <CardHeader className="space-y-3">
@@ -196,9 +198,9 @@ export function MistakesPageClient() {
                       <Badge variant="outline" className="font-mono">
                         {question.questionCode}
                       </Badge>
-                      <Badge variant="secondary">missed {question.missCount}</Badge>
+                      <Badge variant="secondary">{t("mistakes.missedCount", { count: formatNumber(question.missCount) })}</Badge>
                       <span className="text-xs text-muted-foreground">
-                        Last missed {new Date(question.lastMissedAt).toLocaleString()}
+                        {t("mistakes.lastMissed", { date: formatDateTime(question.lastMissedAt) })}
                       </span>
                     </div>
                     <CardTitle className="text-xl leading-snug text-slate-950">{question.title}</CardTitle>
@@ -214,7 +216,7 @@ export function MistakesPageClient() {
                     ) : (
                       <Play className="mr-2 size-4" aria-hidden="true" />
                     )}
-                    Practice again
+                    {t("mistakes.practiceAgain")}
                   </Button>
                 </div>
               </CardHeader>
@@ -224,21 +226,21 @@ export function MistakesPageClient() {
                     <QuestionText value={question.contentHtml} />
                   ) : (
                     <div className="rounded-lg border border-dashed border-slate-300 bg-slate-50/80 p-4 text-sm text-slate-600">
-                      The saved snapshot did not include a question stem.
+                      {t("mistakes.snapshotMissing")}
                     </div>
                   )}
                 </div>
                 <div className="space-y-3">
                   <div className="rounded-lg border border-slate-200 bg-slate-50/80 p-4">
-                    <p className="student-eyebrow">Last answer</p>
-                    <p className="mt-2 break-words text-sm leading-6 text-slate-800">{answerPreview(question.lastAnswer)}</p>
+                    <p className="student-eyebrow">{t("mistakes.lastAnswer")}</p>
+                    <p className="mt-2 break-words text-sm leading-6 text-slate-800">{answerPreview(question.lastAnswer, t("mistakes.noSavedAnswer"))}</p>
                   </div>
                   <div className="rounded-lg border border-amber-200 bg-amber-50/70 p-4">
-                    <p className="text-xs font-bold uppercase tracking-[0.16em] text-amber-800">Last explanation</p>
+                    <p className="text-xs font-bold uppercase tracking-[0.16em] text-amber-800">{t("mistakes.lastExplanation")}</p>
                     {question.lastExplanation ? (
                       <FeedbackText className="mt-2 border-none bg-transparent p-0 text-sm text-amber-950" compact value={question.lastExplanation} />
                     ) : (
-                      <p className="mt-2 text-sm text-amber-900">No saved explanation.</p>
+                      <p className="mt-2 text-sm text-amber-900">{t("mistakes.noSavedExplanation")}</p>
                     )}
                   </div>
                 </div>
@@ -249,12 +251,12 @@ export function MistakesPageClient() {
       ) : (
         <Card className="student-panel">
           <CardContent className="flex min-h-48 flex-col items-center justify-center gap-3 p-6 text-center">
-            <p className="text-xl font-bold text-slate-950">No active missed questions</p>
+            <p className="text-xl font-bold text-slate-950">{t("mistakes.emptyTitle")}</p>
             <p className="max-w-md text-sm leading-6 text-slate-600">
-              Missed questions appear here after a practice review marks an answer incorrect.
+              {t("mistakes.emptyDescription")}
             </p>
             <Button asChild>
-              <StudentPendingLink href="/practice">Start practice</StudentPendingLink>
+              <StudentPendingLink href="/practice">{t("home.startPractice")}</StudentPendingLink>
             </Button>
           </CardContent>
         </Card>

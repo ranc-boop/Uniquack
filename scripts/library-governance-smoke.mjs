@@ -158,13 +158,13 @@ assert(
 );
 
 assert(
-  teacherAssignmentDetail.includes("Delivery paused by Library Review") &&
-    teacherAssignmentDetail.includes("Open Library Review") &&
+  teacherAssignmentDetail.includes('t("assignmentDetail.deliveryPausedByReview")') &&
+    teacherAssignmentDetail.includes('t("assignmentDetail.openLibraryReview")') &&
     teacherAssignmentDetail.includes("resumeQuarantinedAssignment") &&
-    teacherAssignmentList.includes("Delivery paused") &&
+    teacherAssignmentList.includes('t("assignments.deliveryPaused")') &&
     teacherDeliveryActions.includes("resume_quarantined_assignment") &&
-    studentAssignmentDetail.includes("This work is currently unavailable") &&
-    studentAssignmentDetail.includes("No private Library details are shown"),
+    studentAssignmentDetail.includes('translate(locale, "work.assignmentUnavailable")') &&
+    studentAssignmentDetail.includes('translate(locale, "work.assignmentUnavailableDescription")'),
   "Quarantined Assignment delivery must be explicit and recoverable for teachers while students receive a non-enumerating unavailable state.",
 );
 
@@ -173,16 +173,16 @@ assert(
     teacherQuestions.includes("createBankQuestionRevisionDraft") &&
     teacherActions.includes("manageSelectedBankQuestions") &&
     teacherActions.includes('"public_review"') &&
-    teacherQuestions.includes("Add from Public Library") &&
+    teacherQuestions.includes('t("teacherLibrary.addFromPublicLibrary")') &&
     teacherSubmissions.includes("submitted_snapshot") &&
-    teacherSubmissions.includes("assignment-ready snapshot") &&
-    teacherSubmissions.includes("Library owners and editors only") &&
+    teacherSubmissions.includes('t("teacherLibrary.noPublicSubmissionsDescription")') &&
+    teacherSubmissions.includes('t("teacherLibrary.publicSubmissionsReadOnly")') &&
     aiCompatibility.includes('redirect(`/teacher/banks/${bankId}/imports?mode=ai`)'),
   "Teacher UX must expose safe revision/submission/public pull and collapse the old AI route into the Library Import flow.",
 );
 
 assert(
-  adminQuestions.includes("Official Public Library") &&
+  adminQuestions.includes('translate(locale, "admin.publicLibrary")') &&
     adminQuestions.includes('"search_official_public_questions_v2"') &&
     adminQuestions.includes("QuestionManagementWorkbench") &&
     adminReview.includes('.eq("system_key", "official_public")') &&

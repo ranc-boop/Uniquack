@@ -1,6 +1,9 @@
 import { StudentPendingLink } from "@/components/student/student-pending-link";
 import { Button } from "@/components/ui/button";
 import { requireStudentWorkspace } from "@/lib/auth/guards";
+import { formatDateTime, formatNumber, type Locale } from "@/lib/i18n/locale";
+import { translate } from "@/lib/i18n/messages";
+import { getRequestLocale } from "@/lib/i18n/server";
 import { createClient } from "@/lib/supabase/server";
 import { listStudentSentAssignmentFeedbackNotes } from "@/lib/teacher-feedback-notes";
 import { getStudentAssignedWorkDetail } from "@/lib/student-work";
@@ -11,46 +14,46 @@ type StudentWorkDetailPageProps = {
   params: Promise<{ id: string }>;
 };
 
-function formatDateTime(value: string | null | undefined) {
-  if (!value) return "Not set";
-  return new Intl.DateTimeFormat("en", {
+function formatDateTimeLabel(locale: Locale, value: string | null | undefined) {
+  if (!value) return translate(locale, "classrooms.notSet");
+  return formatDateTime(locale, value, {
     dateStyle: "medium",
     timeStyle: "short",
-  }).format(new Date(value));
+  });
 }
 
-function statusLabel(status: "not_started" | "in_progress" | "completed") {
-  if (status === "in_progress") return "In progress";
-  if (status === "completed") return "Completed";
-  return "Not started";
+function statusLabel(locale: Locale, status: "not_started" | "in_progress" | "completed") {
+  if (status === "in_progress") return translate(locale, "student.inProgress");
+  if (status === "completed") return translate(locale, "student.completed");
+  return translate(locale, "work.notStarted");
 }
 
-function actionLabel(status: "not_started" | "in_progress" | "completed") {
-  if (status === "in_progress") return "Continue Practice";
-  if (status === "completed") return "Review Practice";
-  return "Start Practice";
+function actionLabel(locale: Locale, status: "not_started" | "in_progress" | "completed") {
+  if (status === "in_progress") return translate(locale, "work.continuePractice");
+  if (status === "completed") return translate(locale, "work.reviewWork");
+  return translate(locale, "student.startPractice");
 }
 
-function stateCopy(status: "not_started" | "in_progress" | "completed") {
+function stateCopy(locale: Locale, status: "not_started" | "in_progress" | "completed") {
   if (status === "completed") {
     return {
-      title: "Completed",
+      title: translate(locale, "student.completed"),
     };
   }
   if (status === "in_progress") {
     return {
-      title: "Continue where you stopped",
+      title: translate(locale, "work.continueWhereStopped"),
     };
   }
   return {
-    title: "Ready to start",
+    title: translate(locale, "work.readyToStart"),
   };
 }
 
 export default async function StudentWorkDetailPage({
   params,
 }: StudentWorkDetailPageProps) {
-  const profile = await requireStudentWorkspace();
+  const [profile, locale] = await Promise.all([requireStudentWorkspace(), getRequestLocale()]);
   const { id } = await params;
   const supabase = await createClient();
   const assignment = await getStudentAssignedWorkDetail({
@@ -63,17 +66,18 @@ export default async function StudentWorkDetailPage({
     return (
       <main className="space-y-6">
         <section className="student-hero">
-          <p className="student-eyebrow">Assigned work</p>
+          <p className="student-eyebrow">{translate(locale, "student.assignedWork")}</p>
           <h1 className="mt-2 text-3xl font-bold tracking-tight text-slate-950">
-            This work is currently unavailable
+            {translate(locale, "work.assignmentUnavailable")}
           </h1>
           <p className="mt-3 max-w-2xl text-base leading-7 text-slate-600">
-            The Assignment may be paused for teacher review, archived, or not
-            available to your account. No private Library details are shown.
+            {translate(locale, "work.assignmentUnavailableDescription")}
           </p>
           <div className="mt-5">
             <Button asChild variant="outline">
-              <StudentPendingLink href="/student/work">Back to My Work</StudentPendingLink>
+              <StudentPendingLink href="/student/work">
+                {translate(locale, "practice.backToMyWork")}
+              </StudentPendingLink>
             </Button>
           </div>
         </section>
@@ -90,14 +94,14 @@ export default async function StudentWorkDetailPage({
     (item) => item.item_type === "question" && item.question_id && item.question,
   );
   const hasPracticeEntry = usableQuestionItems.length > 0;
-  const currentState = stateCopy(assignment.progressStatus);
+  const currentState = stateCopy(locale, assignment.progressStatus);
 
   return (
     <main className="space-y-6">
       <section className="student-hero">
         <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
           <div className="min-w-0 space-y-2">
-            <p className="student-eyebrow">Assigned work</p>
+            <p className="student-eyebrow">{translate(locale, "student.assignedWork")}</p>
             <h1 className="text-3xl font-bold tracking-tight text-slate-950">
               {assignment.title}
             </h1>
@@ -107,26 +111,32 @@ export default async function StudentWorkDetailPage({
             </p>
           </div>
           <Button asChild variant="outline">
-            <StudentPendingLink href="/student/work">Back to My Work</StudentPendingLink>
+            <StudentPendingLink href="/student/work">
+              {translate(locale, "practice.backToMyWork")}
+            </StudentPendingLink>
           </Button>
         </div>
 
         <div className="mt-5 flex flex-wrap gap-2 text-sm font-semibold">
           <span className="rounded-full border border-slate-200 bg-white px-3 py-1.5 text-slate-800">
-            {statusLabel(assignment.progressStatus)}
+            {statusLabel(locale, assignment.progressStatus)}
           </span>
           <span className="rounded-full border border-slate-200 bg-white px-3 py-1.5 text-slate-800">
-            Due {formatDateTime(assignment.due_at)}
+            {translate(locale, "work.dueAt", {
+              date: formatDateTimeLabel(locale, assignment.due_at),
+            })}
           </span>
           <span className="rounded-full border border-slate-200 bg-white px-3 py-1.5 text-slate-800">
-            {usableQuestionItems.length} practice question(s)
+            {translate(locale, "work.practiceQuestions", {
+              count: formatNumber(locale, usableQuestionItems.length),
+            })}
           </span>
         </div>
 
         {assignment.instructions ? (
           <div className="mt-5 max-w-3xl rounded-lg border border-slate-200 bg-white/80 p-4">
             <p className="text-xs font-bold uppercase tracking-[0.12em] text-slate-500">
-              Teacher instructions
+              {translate(locale, "work.teacherInstructions")}
             </p>
             <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-slate-700">
               {assignment.instructions}
@@ -139,13 +149,25 @@ export default async function StudentWorkDetailPage({
             <h2 className="text-lg font-bold text-slate-950">{currentState.title}</h2>
             <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs font-medium text-slate-500">
               {assignment.progress?.started_at ? (
-                <span>Started {formatDateTime(assignment.progress.started_at)}</span>
+                <span>
+                  {translate(locale, "work.startedAt", {
+                    date: formatDateTimeLabel(locale, assignment.progress.started_at),
+                  })}
+                </span>
               ) : null}
               {assignment.progress?.completed_at ? (
-                <span>Completed {formatDateTime(assignment.progress.completed_at)}</span>
+                <span>
+                  {translate(locale, "work.completedAt", {
+                    date: formatDateTimeLabel(locale, assignment.progress.completed_at),
+                  })}
+                </span>
               ) : null}
               {assignment.progress?.updated_at ? (
-                <span>Updated {formatDateTime(assignment.progress.updated_at)}</span>
+                <span>
+                  {translate(locale, "work.updatedAt", {
+                    date: formatDateTimeLabel(locale, assignment.progress.updated_at),
+                  })}
+                </span>
               ) : null}
             </div>
           </div>
@@ -154,12 +176,12 @@ export default async function StudentWorkDetailPage({
               <StudentPendingLink
                 href={`/practice?assignmentId=${assignment.id}&returnTo=${encodeURIComponent(`/student/work/${assignment.id}`)}`}
               >
-                {actionLabel(assignment.progressStatus)}
+                {actionLabel(locale, assignment.progressStatus)}
               </StudentPendingLink>
             </Button>
           ) : (
             <div className="max-w-sm rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm leading-6 text-amber-900">
-              Practice is unavailable until this assignment has a usable question.
+              {translate(locale, "work.practiceUnavailable")}
             </div>
           )}
         </div>
@@ -171,23 +193,30 @@ export default async function StudentWorkDetailPage({
           <details>
             <summary className="student-focus-ring flex cursor-pointer list-none items-center justify-between gap-3 p-5 marker:content-none">
               <div>
-                <h2 className="text-lg font-bold text-slate-950">Teacher feedback</h2>
+                <h2 className="text-lg font-bold text-slate-950">
+                  {translate(locale, "work.teacherFeedback")}
+                </h2>
+                <p className="mt-1 text-sm text-slate-600">
+                  {translate(locale, "work.privateNotesNotShown")}
+                </p>
               </div>
               <span className="rounded-full bg-sky-50 px-3 py-1 text-sm font-semibold text-sky-700">
-                {feedbackNotes.length}
+                {formatNumber(locale, feedbackNotes.length)}
               </span>
             </summary>
             <div className="divide-y divide-slate-100 border-t border-slate-100">
               {feedbackNotes.map((note) => (
                 <article className="p-5" key={note.id}>
                   <p className="text-xs font-bold uppercase tracking-[0.12em] text-sky-700">
-                    Sent feedback
+                    {translate(locale, "work.sentFeedback")}
                   </p>
                   <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-slate-800">
                     {note.body}
                   </p>
                   <p className="mt-3 text-xs text-slate-500">
-                    Sent {formatDateTime(note.sent_at || note.created_at)}
+                    {translate(locale, "work.sentAt", {
+                      date: formatDateTimeLabel(locale, note.sent_at || note.created_at),
+                    })}
                   </p>
                 </article>
               ))}
@@ -200,10 +229,12 @@ export default async function StudentWorkDetailPage({
         <details>
           <summary className="student-focus-ring flex cursor-pointer list-none items-center justify-between gap-3 p-5 marker:content-none">
             <div>
-              <h2 className="text-lg font-bold text-slate-950">Assigned questions</h2>
+              <h2 className="text-lg font-bold text-slate-950">
+                {translate(locale, "work.assignedQuestions")}
+              </h2>
             </div>
             <span className="rounded-full bg-slate-100 px-3 py-1 text-sm font-semibold text-slate-700">
-              {assignment.items.length}
+              {formatNumber(locale, assignment.items.length)}
             </span>
           </summary>
           {assignment.items.length ? (
@@ -213,26 +244,33 @@ export default async function StudentWorkDetailPage({
                   <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                     <div className="min-w-0 space-y-1">
                       <p className="text-xs font-bold uppercase tracking-[0.14em] text-slate-500">
-                        Item {item.order_index} - {item.item_type}
+                        {translate(locale, "work.itemSummary", {
+                          index: formatNumber(locale, item.order_index),
+                          type: item.item_type,
+                        })}
                       </p>
                       <h3 className="text-base font-bold text-slate-950">
-                        {item.question?.title ?? "Question item unavailable"}
+                        {item.question?.title ?? translate(locale, "work.questionItemUnavailable")}
                       </h3>
                       {item.question ? (
                         <p className="break-words text-sm leading-6 text-slate-600">
-                          {item.question.question_code} - {item.question.question_type} -
-                          difficulty {item.question.difficulty_rating}
+                          {translate(locale, "work.questionDetails", {
+                            code: item.question.question_code,
+                            type: item.question.question_type,
+                            difficulty: formatNumber(locale, item.question.difficulty_rating),
+                          })}
                         </p>
                       ) : (
                         <p className="text-sm leading-6 text-slate-600">
-                          This item cannot open in Practice yet because it is not
-                          linked to a usable question.
+                          {translate(locale, "work.questionItemCannotPractice")}
                         </p>
                       )}
                     </div>
                     {item.points !== null ? (
                       <span className="rounded-full bg-slate-100 px-2 py-1 text-xs font-semibold text-slate-700">
-                        {item.points} pts
+                        {translate(locale, "work.points", {
+                          count: formatNumber(locale, item.points),
+                        })}
                       </span>
                     ) : null}
                   </div>
@@ -242,11 +280,10 @@ export default async function StudentWorkDetailPage({
           ) : (
             <div className="border-t border-slate-100 p-8 text-center">
               <h3 className="text-base font-bold text-slate-950">
-                No usable question items yet
+                {translate(locale, "work.noUsableQuestionItems")}
               </h3>
               <p className="mx-auto mt-2 max-w-md text-sm leading-6 text-slate-600">
-                Your teacher has assigned this work, but the item list is still
-                being prepared.
+                {translate(locale, "work.itemListPreparing")}
               </p>
             </div>
           )}

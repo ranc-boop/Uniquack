@@ -5,6 +5,9 @@ import { notFound } from "next/navigation";
 import { FocusWorkspaceShell } from "@/components/teacher/focus-workspace-shell";
 import { QuestionText } from "@/components/math-content";
 import { requireTeacher } from "@/lib/auth/guards";
+import { formatDateTime as formatLocaleDateTime, formatNumber } from "@/lib/i18n/locale";
+import { getRequestLocale } from "@/lib/i18n/server";
+import { translate, type MessageKey } from "@/lib/i18n/messages";
 import {
   isDatabaseUuid,
   sanitizeTeacherAssignmentReturnTo,
@@ -20,12 +23,19 @@ export const metadata: Metadata = {
   title: "Student Assignment preview — EduStruct",
 };
 
-function formatDateTime(value: string | null | undefined) {
-  if (!value) return "No due date";
-  return new Intl.DateTimeFormat("en", {
-    dateStyle: "medium",
-    timeStyle: "short",
-  }).format(new Date(value));
+function assignmentStatusLabel(locale: Parameters<typeof translate>[0], status: string) {
+  if (status === "assigned") return translate(locale, "assignmentDetail.assigned");
+  if (status === "draft") return translate(locale, "assignmentDetail.draft");
+  if (status === "archived") return translate(locale, "classroom.assignmentStatusArchived");
+  return status;
+}
+
+function questionTypeLabel(locale: Parameters<typeof translate>[0], type: string) {
+  if (type === "mcq") return translate(locale, "courseBuilder.questionTypeMcq");
+  if (type === "fill_blank") return translate(locale, "courseBuilder.questionTypeFillBlank");
+  if (type === "frq") return translate(locale, "courseBuilder.questionTypeFrq");
+  if (type === "mixed") return translate(locale, "courseBuilder.questionTypeMixed");
+  return type;
 }
 
 export default async function TeacherAssignmentStudentPreviewPage({
@@ -36,6 +46,9 @@ export default async function TeacherAssignmentStudentPreviewPage({
   searchParams: Promise<{ returnTo?: string }>;
 }) {
   noStore();
+  const locale = await getRequestLocale();
+  const t = (key: MessageKey, values?: Record<string, number | string>) =>
+    translate(locale, key, values);
   const [, routeParams, query, supabase] = await Promise.all([
     requireTeacher(),
     params,
@@ -72,35 +85,42 @@ export default async function TeacherAssignmentStudentPreviewPage({
             {assignment.classroom.name}
           </span>
           <span className="rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-xs font-semibold capitalize text-slate-700">
-            {assignment.status}
+            {assignmentStatusLabel(locale, assignment.status)}
           </span>
         </>
       }
-      description="This teacher-authorized preview contains only the Assignment fields and prompts students can receive. It does not impersonate a student or expose answers, Library content, lineage, or evidence."
-      eyebrow="Student-visible Assignment · Focused preview"
+      description={t("assignmentDetail.studentPreviewDescription")}
+      eyebrow={t("assignmentDetail.studentPreviewEyebrow")}
       returnHref={returnHref}
-      returnSurfaceLabel="Assignment detail"
+      returnSurfaceLabel={t("assignmentDetail.assignmentDetailReturn")}
       title={assignment.title}
     >
       <section className="rounded-lg border border-slate-200 bg-white p-5">
         <dl className="grid gap-3 text-sm sm:grid-cols-2">
           <div className="rounded-lg bg-slate-50 p-3">
-            <dt className="font-semibold text-slate-500">Due</dt>
+            <dt className="font-semibold text-slate-500">{t("assignmentDetail.due")}</dt>
             <dd className="mt-1 font-bold text-slate-950">
-              {formatDateTime(assignment.due_at)}
+              {assignment.due_at
+                ? formatLocaleDateTime(locale, assignment.due_at, {
+                    dateStyle: "medium",
+                    timeStyle: "short",
+                  })
+                : t("assignments.noDueDate")}
             </dd>
           </div>
           <div className="rounded-lg bg-slate-50 p-3">
-            <dt className="font-semibold text-slate-500">Questions</dt>
+            <dt className="font-semibold text-slate-500">
+              {t("assignmentDetail.questions")}
+            </dt>
             <dd className="mt-1 font-bold text-slate-950">
-              {assignment.items.length}
+              {formatNumber(locale, assignment.items.length)}
             </dd>
           </div>
         </dl>
         {assignment.instructions?.trim() ? (
           <div className="mt-5">
             <h2 className="text-base font-bold text-slate-950">
-              Instructions
+              {t("assignmentDetail.instructions")}
             </h2>
             <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-slate-700">
               {assignment.instructions}
@@ -118,10 +138,10 @@ export default async function TeacherAssignmentStudentPreviewPage({
             className="text-lg font-bold text-slate-950"
             id="student-preview-items-heading"
           >
-            Assigned questions
+            {t("assignmentDetail.assignedQuestions")}
           </h2>
           <p className="mt-1 text-sm leading-6 text-slate-600">
-            Student-visible prompt content only.
+            {t("assignmentDetail.studentVisiblePrompt")}
           </p>
         </div>
         {assignment.items.length ? (
@@ -131,15 +151,17 @@ export default async function TeacherAssignmentStudentPreviewPage({
                 <div className="flex flex-wrap items-start justify-between gap-3">
                   <div className="min-w-0">
                     <p className="text-xs font-bold uppercase tracking-[0.12em] text-slate-500">
-                      Question {item.order_index}
+                      {t("assignmentDetail.questionNumber", {
+                        count: formatNumber(locale, item.order_index),
+                      })}
                     </p>
                     <h3 className="mt-1 break-words text-base font-bold text-slate-950">
-                      {item.question?.title ?? "Question unavailable"}
+                      {item.question?.title ?? t("assignmentDetail.questionUnavailable")}
                     </h3>
                   </div>
                   {item.question ? (
                     <span className="rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-xs font-semibold text-slate-700">
-                      {item.question.question_type}
+                      {questionTypeLabel(locale, item.question.question_type)}
                     </span>
                   ) : null}
                 </div>
@@ -150,7 +172,7 @@ export default async function TeacherAssignmentStudentPreviewPage({
                   />
                 ) : (
                   <p className="mt-3 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
-                    This prompt is currently unavailable to students.
+                    {t("assignmentDetail.promptUnavailable")}
                   </p>
                 )}
               </li>
@@ -158,7 +180,7 @@ export default async function TeacherAssignmentStudentPreviewPage({
           </ol>
         ) : (
           <p className="p-5 text-sm text-slate-600">
-            No student-visible questions are attached.
+            {t("assignmentDetail.noStudentQuestions")}
           </p>
         )}
       </section>

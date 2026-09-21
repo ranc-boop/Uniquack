@@ -25,6 +25,10 @@ function assert(condition, message) {
   if (!condition) throw new Error(message);
 }
 
+function usesMessageKeys(source, ...keys) {
+  return keys.every((key) => source.includes(`"${key}"`));
+}
+
 function summarizeSupabaseError(error) {
   if (!error) return "unknown error";
   return [error.message, error.code, error.details, error.hint]
@@ -95,25 +99,31 @@ async function runStaticChecks() {
   );
   assert(
     !teacherNav.includes("/admin/imports/pdf") &&
-      !teacherNav.includes("/admin/review") &&
-      !teacherNav.includes("/practice") &&
-      teacherNav.includes('label: "Home"') &&
-      teacherNav.includes("My Libraries") &&
-      teacherNav.includes("Public Library") &&
-      teacherNav.includes("/questions?workspace=teacher") &&
-      !teacherNav.includes("AI Parsing") &&
-      teacherNav.includes("Blueprints") &&
-      teacherNav.includes("Classrooms") &&
-      teacherNav.includes("Assignments") &&
-      teacherNav.includes("Progress") &&
-      teacherNav.includes("/teacher/blueprints") &&
+    !teacherNav.includes("/admin/review") &&
+    !teacherNav.includes("/practice") &&
+    usesMessageKeys(
+      teacherNav,
+      "teacher.home",
+      "teacher.myLibraries",
+      "teacher.publicLibrary",
+      "teacher.blueprints",
+      "teacher.classrooms",
+      "teacher.assignments",
+      "teacher.progress",
+    ) &&
+    teacherNav.includes("/questions?workspace=teacher") &&
+    !teacherNav.includes("AI Parsing") &&
+    teacherNav.includes("/teacher/blueprints") &&
       teacherNav.includes("/teacher/publish") &&
-      teacherNav.includes("/teacher/progress") &&
-      teacherHome.includes("getTeacherHomeSummary") &&
-      teacherHome.includes("Next action") &&
-      teacherHome.includes('label: "Libraries"') &&
-      teacherHome.includes('label: "Assignments"') &&
-      teacherHome.includes('label: "Progress"') &&
+    teacherNav.includes("/teacher/progress") &&
+    teacherHome.includes("getTeacherHomeSummary") &&
+    usesMessageKeys(
+      teacherHome,
+      "teacher.nextAction",
+      "teacher.libraries",
+      "teacher.assignments",
+      "teacher.progress",
+    ) &&
       !teacherHome.includes("No unreviewed draft can be assigned to students") &&
       !teacherHome.includes("Student visibility stays assignment-only"),
     "teacher workspace navigation must stay bank-first instead of pointing to admin/global review",
@@ -130,13 +140,13 @@ async function runStaticChecks() {
     "admin page must remain available for platform operations",
   );
   assert(
-    teacherBankReviewPage.includes("Approve current page") &&
+    teacherBankReviewPage.includes("teacherLibrary.approveCurrentPage") &&
       teacherBankReviewPage.includes("approveBankReviewQuestion") &&
       teacherBankReviewPage.includes("LazyTeacherQuestionPreview") &&
-      teacherBankQuestionsPage.includes('\"Ready\"') &&
-      teacherBankQuestionsPage.includes('\"Archived\"') &&
+      teacherBankQuestionsPage.includes("teacherLibrary.ready") &&
+      teacherBankQuestionsPage.includes("teacherLibrary.archived") &&
       teacherBankQuestionsPage.includes("LazyTeacherQuestionPreview") &&
-      teacherBankQuestionsPage.includes("Add from Public Library"),
+      teacherBankQuestionsPage.includes("teacherLibrary.addFromPublicLibrary"),
     "teacher bank pages must keep approval bank-scoped and public copying explicit without explanatory UI",
   );
   assert(

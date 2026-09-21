@@ -62,6 +62,10 @@ function hasVideosRouteContract(source) {
   );
 }
 
+function usesMessageKeys(source, ...keys) {
+  return keys.every((key) => source.includes(`"${key}"`));
+}
+
 if (!sourceOnly) {
   await checkRoute("/questions", "Public Library");
   await checkRoute("/videos");
@@ -137,6 +141,7 @@ const videosPage = await read("src/app/videos/page.tsx");
 const authActions = await read("src/app/auth/actions.ts");
 const authGuards = await read("src/lib/auth/guards.ts");
 const authNav = await read("src/components/auth-nav.tsx");
+const i18nMessages = await read("src/lib/i18n/messages.ts");
 const teacherHomePage = await read("src/app/teacher/page.tsx");
 const teacherDashboardHelper = await read("src/lib/teacher-dashboard.ts");
 const teacherWorkspaceNav = await read("src/components/teacher/teacher-workspace-nav.tsx");
@@ -210,8 +215,17 @@ const studentJoinClassroomPage = await read("src/app/student/classrooms/join/pag
 const classroomMigration = await read("supabase/clean-migrations/0018_classroom_foundation.sql");
 const studentWorkMigration = await read("supabase/clean-migrations/0021_student_work_assignments.sql");
 assert(
-    teacherHomePage.includes("Teacher") &&
-    teacherHomePage.includes("Next action") &&
+  i18nMessages.includes('"teacher.title": "Teacher"') &&
+    i18nMessages.includes('"teacher.title": "教师"') &&
+    i18nMessages.includes('"student.dashboard": "Student Dashboard"') &&
+    i18nMessages.includes('"student.dashboard": "学生仪表盘"') &&
+    i18nMessages.includes('"admin.dashboard": "Dashboard"') &&
+    i18nMessages.includes('"admin.dashboard": "仪表盘"'),
+  "the locale catalog must retain English and Simplified Chinese workspace labels",
+);
+console.log("PASS locale catalog retains English and Simplified Chinese workspace labels");
+assert(
+    usesMessageKeys(teacherHomePage, "teacher.title", "teacher.nextAction") &&
     teacherHomePage.includes("getTeacherHomeSummary") &&
     !teacherHomePage.includes("TeacherDashboardOverviewCards") &&
     teacherDashboardHelper.includes("listTeacherQuestionBanks") &&
@@ -223,14 +237,17 @@ assert(
     !teacherDashboardHelper.includes(".insert(") &&
     !teacherDashboardHelper.includes(".update(") &&
     !teacherDashboardHelper.includes(".delete(") &&
-    teacherWorkspaceNav.includes("Home") &&
-    teacherWorkspaceNav.includes("My Libraries") &&
-    teacherWorkspaceNav.includes("Public Library") &&
+    usesMessageKeys(
+      teacherWorkspaceNav,
+      "teacher.home",
+      "teacher.myLibraries",
+      "teacher.publicLibrary",
+      "teacher.blueprints",
+      "teacher.classrooms",
+      "teacher.assignments",
+      "teacher.progress",
+    ) &&
     !teacherWorkspaceNav.includes("AI Parsing") &&
-    teacherWorkspaceNav.includes("Blueprints") &&
-    teacherWorkspaceNav.includes("Classrooms") &&
-    teacherWorkspaceNav.includes("Assignments") &&
-    teacherWorkspaceNav.includes("Progress") &&
     !teacherWorkspaceNav.includes("/admin/imports/pdf") &&
     !teacherWorkspaceNav.includes("/admin/review") &&
     teacherAiParsingPage.includes("getTeacherQuestionBankDetail") &&
@@ -238,17 +255,23 @@ assert(
     teacherAiParsingPage.includes("imports?mode=ai") &&
     !teacherAiParsingPage.includes("/admin/imports/pdf") &&
     !teacherAiParsingPage.includes("/admin/review") &&
-    teacherBanksPage.includes("Libraries") &&
-    teacherBanksPage.includes("Join by code") &&
-    teacherBanksPage.includes("Assignment ready") &&
-    teacherBanksPage.includes("Create Library") &&
+    usesMessageKeys(
+      teacherBanksPage,
+      "teacher.libraries",
+      "teacher.joinByCode",
+      "teacher.assignmentReady",
+      "teacher.createLibrary",
+    ) &&
     teacherBankNewPage.includes("action={createQuestionBank}") &&
     teacherBankDetailPage.includes("BankRouteTabs") &&
-    teacherBankDetailPage.includes("Next action") &&
-    teacherBankDetailPage.includes('label: "Draft"') &&
-    teacherBankDetailPage.includes('label: "Ready"') &&
-    teacherBankDetailPage.includes('label: "Members"') &&
-    teacherBankDetailPage.includes("Create Assignment") &&
+    usesMessageKeys(
+      teacherBankDetailPage,
+      "teacherLibrary.nextAction",
+      "teacherLibrary.draft",
+      "teacherLibrary.ready",
+      "teacherLibrary.members",
+      "teacherLibrary.createAssignment",
+    ) &&
     teacherBankDetailPage.includes("/teacher/publish?sourceBankId=${bank.id}") &&
     teacherBankImportsPage.includes("TeacherBankImportTransition") &&
     teacherBankImportTransition.includes('aria-label="Library import modes"') &&
@@ -258,13 +281,21 @@ assert(
     teacherBankImportsPage.includes("BankManualQuestionForm") &&
     teacherBankImportsPage.includes("BatchImportJsonPanelLoader") &&
     !teacherBankImportsPage.includes("/admin/imports/pdf") &&
-    teacherBankImportsPage.includes("private drafts in this Library until review.") &&
-    teacherBankReviewPage.includes("Approve current page") &&
+    usesMessageKeys(
+      teacherBankImportsPage,
+      "teacherLibrary.importedPrivateReviewDrafts",
+      "teacherLibrary.reviewGateNotice",
+    ) &&
+    usesMessageKeys(
+      teacherBankReviewPage,
+      "teacherLibrary.approveCurrentPage",
+      "teacherLibrary.approvalResponsibility",
+    ) &&
     teacherBankReviewPage.includes("LazyTeacherQuestionPreview") &&
     teacherBankReviewPage.includes("blockedCount") &&
     teacherBankQuestionsPage.includes("LazyTeacherQuestionPreview") &&
     teacherBankQuestionsPage.includes('kind="public-question"') &&
-    teacherBankQuestionsPage.includes('"Ready"') &&
+    usesMessageKeys(teacherBankQuestionsPage, "teacherLibrary.ready") &&
     lazyTeacherQuestionPreview.includes("activeRequestCount < 2") &&
     lazyTeacherQuestionPreview.includes('cache: "no-store"') &&
     teacherBankDetailPage.includes("/members") &&
@@ -275,15 +306,22 @@ assert(
     teacherBankActions.includes('rpc("remove_bank_member"') &&
     teacherBankActions.includes('rpc("approve_library_questions_v2"') &&
     teacherBankActions.includes("create_assignment_from_bank") &&
-    teacherPublishPage.includes("Choose one source Library") &&
+    usesMessageKeys(
+      teacherPublishPage,
+      "assignment.chooseSourceLibrary",
+      "assignment.openLibraryReviewDrafts",
+      "assignment.noReadyQuestions",
+    ) &&
     teacherPublishPage.includes("QuestionChecklist") &&
     teacherPublishPage.includes("LazyTeacherQuestionPreview") &&
     teacherPublishPage.includes("AssignmentSelectionSummary") &&
     teacherPublishPage.includes("AssignmentComposerFlow") &&
-    teacherPublishPage.includes("Blueprint rows are not directly assignable") &&
-    teacherPublishPage.includes("Package publishing is not assignment-ready yet.") &&
-    teacherPublishPage.includes("Assignments cannot deliver raw AI drafts or unreviewed material") &&
-    assignmentComposerFlow.includes("Publish Assignment") &&
+    usesMessageKeys(
+      teacherPublishPage,
+      "assignment.blueprintGeneratedOnly",
+      "assignment.noPackageQuestionsDescription",
+    ) &&
+    usesMessageKeys(assignmentComposerFlow, "assignment.publish") &&
     assignmentComposerFlow.includes('value="assigned"') &&
     teacherPublishActions.includes("publishQuestionBankAssignments") &&
     teacherPublishActions.includes("verifyPublishableSelection") &&
@@ -305,9 +343,12 @@ assert(
     teacherBlueprintPage.includes("New Folder") &&
     teacherBlueprintNewPage.includes("action={createTeacherBlueprint}") &&
     teacherBlueprintDetailPage.includes("generateTeacherBlueprintReviewDraftsAction") &&
-    teacherBankBlueprintsPage.includes('title="Blueprints"') &&
+    usesMessageKeys(
+      teacherBankBlueprintsPage,
+      "teacherLibrary.blueprints",
+      "teacherLibrary.createBlueprintFromLibrary",
+    ) &&
     teacherBankBlueprintsPage.includes("BankHeroPanel") &&
-    teacherBankBlueprintsPage.includes("Create Blueprint from this Library") &&
     blueprintLibraryMigration.includes("create table if not exists public.bank_blueprints") &&
     teacherBankActions.includes("importBatchImportJson") &&
     bankImportReviewMigration.includes("public.approve_bank_review_question") &&
@@ -316,9 +357,16 @@ assert(
     assignmentFromBankMigration.includes("questions_assignment_item_read") &&
     assignmentFromBankMigration.includes("'question_bank'") &&
     teacherBankJoinPage.includes("action={joinQuestionBankByCode}") &&
-    teacherBankJoinPage.includes("Joining a Library is separate from") &&
-    teacherBankMembersPage.includes("Owner-controlled sharing") &&
-    teacherBankMembersPage.includes("Create share code") &&
+    usesMessageKeys(
+      teacherBankJoinPage,
+      "teacherLibrary.joinSharedLibrary",
+      "teacherLibrary.joinSharedLibraryDescription",
+    ) &&
+    usesMessageKeys(
+      teacherBankMembersPage,
+      "teacherLibrary.ownerControlledSharing",
+      "teacherLibrary.createShareCode",
+    ) &&
     authActions.includes('redirect("/teacher")') &&
     authGuards.includes('redirect("/auth/login?next=/teacher")') &&
     authNav.includes("Teacher Workspace preview"),
@@ -326,89 +374,145 @@ assert(
 );
 console.log("PASS teacher runtime exposes bank-first teacher workspace and bank foundation surfaces");
 assert(
-  teacherClassroomsPage.includes("Delivery layer") &&
-    teacherClassroomsPage.includes("Classes are roster and delivery spaces") &&
-    teacherClassroomsPage.includes("Your classes") &&
-    teacherClassroomsPage.includes("Create Class") &&
-    teacherClassroomUi.includes("Publish to classes") &&
-    teacherClassroomDetailPage.includes("Students can join the roster") &&
-    teacherClassroomDetailPage.includes("Active join code") &&
-    teacherClassroomDetailPage.includes("Class delivery snapshot") &&
-    teacherClassroomDetailPage.includes("Students needing attention") &&
-    teacherClassroomDetailPage.includes("View assignments") &&
+  usesMessageKeys(
+      teacherClassroomsPage,
+      "classroom.deliveryLayer",
+      "classroom.openContext",
+      "classroom.yourClasses",
+      "classroom.create",
+      "classroom.latestAssignment",
+    ) &&
+    usesMessageKeys(teacherClassroomUi, "classroom.publishToClasses") &&
+    usesMessageKeys(
+      teacherClassroomDetailPage,
+      "classroomOverview.joinCodeRosterDescription",
+      "classroomOverview.activeJoinCode",
+      "classroomOverview.deliverySnapshot",
+      "classroomOverview.studentsNeedingAttention",
+      "classroomOverview.viewAssignments",
+    ) &&
     teacherClassroomPeoplePage.includes("/students") &&
-    teacherClassroomStudentsPage.includes("Remove from active roster") &&
-    teacherClassroomStudentsPage.includes("preserve all history") &&
-    teacherClassroomTeachersPage.includes("Add co-teacher") &&
-    teacherClassroomTeachersPage.includes("source Libraries") &&
-    teacherAssignmentsPage.includes("Classroom assignments") &&
-    teacherAssignmentsPage.includes("Publish new work") &&
-    teacherAssignmentsPage.includes("Publish new bank work") &&
-    teacherAssignmentsPage.includes("Assigned") &&
-    teacherAssignmentsPage.includes("Assignment visibility") &&
-    teacherAssignmentsPage.includes("global publishing") &&
-    teacherAssignmentsPage.includes("Draft") &&
-    teacherAssignmentsPage.includes("Archived") &&
-    teacherAssignmentsPage.includes("Latest activity") &&
-    teacherClassroomAnalyticsPage.includes("Progress") &&
-    teacherClassroomBlueprintsPage.includes("Blueprints linked to this class will appear here") &&
-    teacherClassroomSettingsPage.includes("Join-code lifecycle") &&
-    teacherClassroomSettingsPage.includes("Archive classroom") &&
-    teacherClassroomSettingsPage.includes("Reopen classroom") &&
+    usesMessageKeys(
+      teacherClassroomStudentsPage,
+      "classroomStudents.removeFromActiveRoster",
+      "classroomStudents.removeConfirmation",
+    ) &&
+    usesMessageKeys(
+      teacherClassroomTeachersPage,
+      "classroomTeachers.addCoTeacher",
+      "classroomTeachers.teamDescription",
+    ) &&
+    usesMessageKeys(
+      teacherAssignmentsPage,
+      "assignments.classroomAssignments",
+      "assignments.publishNewWork",
+      "assignments.deliveryHistoryDescription",
+      "assignments.latestActivity",
+      "assignments.openProgress",
+      "assignments.assigned",
+      "assignments.paused",
+      "assignments.draft",
+      "assignments.archived",
+      "assignments.assignmentVisibility",
+      "assignments.assignmentVisibilityDescription",
+    ) &&
+    usesMessageKeys(
+      teacherClassroomAnalyticsPage,
+      "classroomAnalytics.title",
+      "classroomAnalytics.assignmentCompletionSummaries",
+    ) &&
+    usesMessageKeys(
+      teacherClassroomBlueprintsPage,
+      "classroomBlueprints.title",
+      "classroomBlueprints.noLinkedTitle",
+    ) &&
+    usesMessageKeys(
+      teacherClassroomSettingsPage,
+      "classroomSettings.joinCodeLifecycle",
+      "classroomSettings.archive",
+      "classroomSettings.reopen",
+    ) &&
     teacherAssignmentNewPage.includes("getManagedClassroom") &&
     teacherAssignmentNewPage.includes(
       "redirect(`/teacher/publish?classroomId=${encodeURIComponent(id)}`)",
     ) &&
     assignmentSelectionSummary.includes("selectedCount") &&
     assignmentSelectionSummary.includes("inputName") &&
-    assignmentSelectionSummary.includes("Preview selected") &&
     assignmentSelectionSummary.includes("loadTeacherQuestionPreviews") &&
-    teacherAssignmentDetailPage.includes("Assignment items") &&
-    teacherAssignmentDetailPage.includes("Assignment-only. The full Library stays private.") &&
-    teacherAssignmentDetailPage.includes("full Library") &&
-    teacherAssignmentDetailPage.includes("Assignment setup and source") &&
-    teacherAssignmentDetailPage.includes("Library") &&
+    usesMessageKeys(
+      assignmentSelectionSummary,
+      "assignment.selectedCount",
+      "assignment.previewSelected",
+    ) &&
+    usesMessageKeys(
+      teacherAssignmentDetailPage,
+      "assignmentDetail.assignmentItems",
+      "assignmentDetail.assignmentOnlyLibraryPrivate",
+      "assignmentDetail.assignmentSetupAndSource",
+      "assignmentDetail.library",
+      "assignmentDetail.studentProgress",
+      "assignmentDetail.studentProgressDescription",
+      "assignmentDetail.evidenceDescription",
+    ) &&
     teacherAssignmentDetailPage.includes('taskKind="student-preview"') &&
     teacherAssignmentDetailPage.includes("/student-preview") &&
-    teacherAssignmentDetailPage.includes("Student progress") &&
-    teacherAssignmentDetailPage.includes("One row per active classroom student") &&
-    teacherAssignmentDetailPage.includes("Practice evidence") &&
-    teacherAssignmentDetailPage.includes("Draft assignment is teacher-only") &&
-    teacherAssignmentDetailPage.includes("Assigned work is visible in Student My Work") &&
+    usesMessageKeys(
+      teacherAssignmentDetailPage,
+      "assignmentDetail.draftTeacherOnly",
+      "assignmentDetail.assignedVisible",
+    ) &&
     teacherAssignmentDetailPage.includes("/questions/") &&
-    teacherAssignmentsPage.includes("Open progress") &&
-    courseBuilderBridgePage.includes("Draft/unreviewed questions are unavailable for assignment") &&
+    usesMessageKeys(
+      courseBuilderBridgePage,
+      "courseBuilder.saveDraftTeacherOnly",
+      "courseBuilder.assignNowVisible",
+      "courseBuilder.draftsUnavailableForAssignment",
+      "courseBuilder.libraryReview",
+    ) &&
     courseBuilderBridgeActions.includes("createAssignmentFromCourseBuilder") &&
     courseBuilderBridgeActions.includes("No reviewed Library questions are available") &&
     courseBuilderBridgeHelper.includes('.eq("status", "published")') &&
     courseBuilderBridgeMigration.includes("source_summary jsonb") &&
-    studentHomePage.includes("Student Dashboard") &&
-    studentHomePage.includes("My Work") &&
-    studentHomePage.includes("Practice") &&
-    studentHomePage.includes("Mistakes") &&
-    studentHomePage.includes("Public Library") &&
-    studentHomePage.includes("Progress / Feedback") &&
+    usesMessageKeys(
+      studentHomePage,
+      "student.dashboard",
+      "student.myWork",
+      "student.practice",
+      "student.mistakes",
+      "student.publicLibrary",
+      "student.progressFeedback",
+    ) &&
     studentLayout.includes("StudentWorkspaceNav") &&
-    studentWorkspaceNav.includes("Dashboard") &&
-    studentWorkspaceNav.includes("My Work") &&
-    studentWorkspaceNav.includes("Practice") &&
-    studentWorkspaceNav.includes("Mistakes") &&
-    studentWorkspaceNav.includes("Public Library") &&
-    studentWorkspaceNav.includes("Progress / Feedback") &&
+    usesMessageKeys(
+      studentWorkspaceNav,
+      "student.dashboard",
+      "student.myWork",
+      "student.practice",
+      "student.mistakes",
+      "student.publicLibrary",
+      "student.progressFeedback",
+    ) &&
     studentWorkspaceShell.includes("StudentWorkspaceShell") &&
     studentWorkspaceShell.includes("StudentModuleCard") &&
-    studentWorkPage.includes("My Work") &&
-    studentWorkPage.includes("Due soon") &&
-    studentWorkPage.includes("In progress") &&
-    studentWorkPage.includes("Not started") &&
-    studentWorkPage.includes("Completed") &&
-    studentWorkPage.includes("No assigned work yet") &&
-    studentWorkPage.includes("Start Practice") &&
-    studentWorkPage.includes("Continue Practice") &&
-    studentWorkPage.includes("Review work") &&
-    studentWorkDetailPage.includes("Start Practice") &&
-    studentWorkDetailPage.includes("Review Practice") &&
-    studentWorkDetailPage.includes("Practice is unavailable until this assignment has a usable question.") &&
+    usesMessageKeys(
+      studentWorkPage,
+      "student.myWork",
+      "student.dueSoon",
+      "student.inProgress",
+      "work.notStarted",
+      "student.completed",
+      "work.emptyTitle",
+      "student.startPractice",
+      "work.continuePractice",
+      "work.reviewWork",
+    ) &&
+    usesMessageKeys(
+      studentWorkDetailPage,
+      "student.startPractice",
+      "work.reviewWork",
+      "work.practiceUnavailable",
+      "work.assignedQuestions",
+    ) &&
     practicePage.includes("assignmentId") &&
     practiceLoader.includes("assignmentId") &&
     practiceLoader.includes("PracticeWorkspaceSkeleton") &&
@@ -416,13 +520,12 @@ assert(
     practiceScopePanels.includes("PracticeSessionListLoading") &&
     practiceScopePanels.includes('role="status"') &&
     practiceClient.includes("/api/practice/assignments/start") &&
-    practiceClient.includes("Assignment practice") &&
+    usesMessageKeys(practiceClient, "practice.assignmentPractice") &&
     assignmentPracticeStartRoute.includes("startAssignmentPractice") &&
-    studentPublicLibraryPage.includes("Public Library") &&
-    studentProgressPage.includes("Progress / Feedback") &&
-    studentClassroomsPage.includes("My classes") &&
-    studentClassroomsPage.includes("Active membership") &&
-    studentJoinClassroomPage.includes("Join classroom") &&
+    usesMessageKeys(studentPublicLibraryPage, "student.publicLibrary") &&
+    usesMessageKeys(studentProgressPage, "student.progressFeedback") &&
+    usesMessageKeys(studentClassroomsPage, "classrooms.title", "classrooms.activeMembership") &&
+    usesMessageKeys(studentJoinClassroomPage, "classrooms.join") &&
     classroomMigration.includes("join_classroom_by_code") &&
     studentWorkMigration.includes("create table if not exists public.assignments"),
   "native classroom routes must expose teacher roster plus student join/list and My Work surfaces",
@@ -482,17 +585,20 @@ assert(
 console.log("PASS question and blueprint data loading stays summary-first and route-scoped");
 assert(
   adminLayout.includes("AdminShell") &&
-    adminSidebar.includes("Content Governance") &&
-    adminSidebar.includes("Platform") &&
-    adminSidebar.includes("Overview") &&
-    adminSidebar.includes("Public Library") &&
-    adminSidebar.includes("Approval Queue") &&
-    adminSidebar.includes("Blueprints") &&
-    adminSidebar.includes("Practice Frameworks") &&
-    adminSidebar.includes("Videos") &&
-    adminSidebar.includes("Imports") &&
-    adminSidebar.includes("Taxonomy") &&
-    adminSidebar.includes("Library Support") &&
+    usesMessageKeys(
+      adminSidebar,
+      "admin.contentGovernance",
+      "admin.platformOperations",
+      "admin.overview",
+      "admin.publicLibrary",
+      "admin.approvalQueue",
+      "teacher.blueprints",
+      "admin.practiceFrameworks",
+      "admin.videos",
+      "admin.imports",
+      "admin.taxonomy",
+      "admin.librarySupport",
+    ) &&
     adminSidebar.includes("/admin/blueprints") &&
     !adminSidebar.includes("Experience") &&
     adminSidebar.includes("aria-current") &&
@@ -645,7 +751,7 @@ assert(
 );
 console.log("PASS progressive loading shells are present for questions, review, blueprints, and AI PDF import");
 assert(
-  adminSidebar.includes("Blueprints") &&
+  usesMessageKeys(adminSidebar, "teacher.blueprints") &&
     adminSidebar.includes("/admin/blueprints"),
   "admin navigation must include Blueprints",
 );

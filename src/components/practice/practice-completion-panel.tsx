@@ -1,6 +1,7 @@
 "use client";
 
 import { FeedbackText } from "@/components/math-content";
+import { useLocale } from "@/components/i18n/locale-provider";
 import { StudentPendingLink } from "@/components/student/student-pending-link";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -24,33 +25,38 @@ export function PracticeCompletionPanel({
   report: string;
   retryAvailable: boolean;
 }) {
+  const { formatNumber, t } = useLocale();
+  const inventory: Array<[string, number]> = completion
+    ? [
+        [t("practice.mastered"), completion.inventory.mastered],
+        [t("practice.notAttempted"), completion.inventory.unseen],
+        [t("practice.retryLater"), completion.inventory.deferred],
+      ]
+    : [];
+
   return (
     <Card className="student-panel student-enter">
       <CardHeader>
         <Badge className="w-fit" variant="outline">
-          {isCompleted ? "Practice complete" : "Finishing practice"}
+          {isCompleted ? t("practice.complete") : t("practice.finishing")}
         </Badge>
         <CardTitle className="text-2xl">
-          {isCompleted ? "Your learning report" : "Building your learning report…"}
+          {isCompleted ? t("practice.learningReport") : t("practice.buildingReport")}
         </CardTitle>
       </CardHeader>
       <CardContent className="space-y-5">
         <FeedbackText
           className="border-none bg-transparent p-0 text-sm leading-7 text-slate-700"
-          value={report || "Reviewing your saved practice evidence…"}
+          value={report || t("practice.reviewingEvidence")}
         />
         {completion ? (
           <div className="grid gap-2 text-sm sm:grid-cols-3">
-            {[
-              ["Mastered", completion.inventory.mastered],
-              ["Not attempted", completion.inventory.unseen],
-              ["Retry later", completion.inventory.deferred],
-            ].map(([label, value]) => (
+            {inventory.map(([label, value]) => (
               <div className="rounded-xl bg-slate-50 p-3" key={label}>
                 <span className="block text-xs font-semibold uppercase tracking-wide text-slate-500">
                   {label}
                 </span>
-                <span className="mt-1 block text-xl font-bold text-slate-950">{value}</span>
+                <span className="mt-1 block text-xl font-bold text-slate-950">{formatNumber(value)}</span>
               </div>
             ))}
           </div>
@@ -60,12 +66,12 @@ export function PracticeCompletionPanel({
             {assignmentId ? (
               <Button asChild>
                 <StudentPendingLink href={`/student/work/${assignmentId}`}>
-                  Review this Assignment
+                  {t("practice.reviewAssignment")}
                 </StudentPendingLink>
               </Button>
             ) : (
               <Button onClick={onNewSession} type="button">
-                Start with more Libraries
+                {t("practice.moreLibraries")}
               </Button>
             )}
             <Button
@@ -74,11 +80,11 @@ export function PracticeCompletionPanel({
               type="button"
               variant="outline"
             >
-              {assignmentId ? "Retry this Assignment" : "Review remaining mistakes"}
+              {assignmentId ? t("practice.retryAssignment") : t("practice.reviewMistakes")}
             </Button>
             <Button asChild type="button" variant="ghost">
               <StudentPendingLink href={assignmentId ? "/student/work" : "/student"}>
-                {assignmentId ? "Back to My Work" : "Back to student workspace"}
+                {assignmentId ? t("practice.backToMyWork") : t("practice.backToStudentWorkspace")}
               </StudentPendingLink>
             </Button>
           </div>

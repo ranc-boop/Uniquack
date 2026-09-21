@@ -146,7 +146,7 @@ async function insertBankQuestionFixture({ admin, bankId, organizationId, suffix
   const { data: question, error: questionError } = await admin
     .from("questions")
     .insert({
-      answer_spec: { kind: "exact_text", value: "2" },
+      answer_spec: { accepted_answers: ["2"] },
       content_html: "<p>Solve x + 3 = 5.</p>",
       content_source: "Solve x + 3 = 5.",
       content_source_format: "plain_text",
@@ -155,6 +155,7 @@ async function insertBankQuestionFixture({ admin, bankId, organizationId, suffix
       options: [],
       organization_id: organizationId,
       owner_bank_id: bankId,
+      approval_status: "approved",
       question_code: `bank-assign-smoke-${suffix}-${codeSuffix}`,
       question_type: "fill_blank",
       solution_html: "<p>Subtract 3 from both sides.</p>",
@@ -239,7 +240,7 @@ async function main() {
     "assignment-from-bank migration must add bank lineage and assignment-scoped question read without publishing questions",
   );
   assert(
-    bankDetailPage.includes("Create Assignment") &&
+    bankDetailPage.includes('t("teacherLibrary.createAssignment")') &&
       bankAssignmentPage.includes("redirect(") &&
       bankAssignmentPage.includes("/teacher/publish?") &&
       bankAssignmentPage.includes("sourceBankId") &&
@@ -248,8 +249,8 @@ async function main() {
       assignmentLinkage.includes("missingQuestionIds") &&
       assignmentLinkage.includes("ASSIGNMENT_CONTENT_UNAVAILABLE") &&
       !assignmentLinkage.includes('.eq("status", "published")') &&
-      studentWorkDetailPage.includes("only the questions assigned here") &&
-      studentWorkDetailPage.includes("full private Library remains unavailable"),
+      studentWorkDetailPage.includes('translate(locale, "work.assignedQuestions")') &&
+      studentWorkDetailPage.includes('translate(locale, "work.assignmentUnavailableDescription")'),
     "assignment-from-bank UI and practice path must be bank-first and assignment-only",
   );
   console.log("PASS assignment-from-bank static checks protect bank-first assignment workflow");

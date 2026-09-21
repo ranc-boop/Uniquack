@@ -5,6 +5,7 @@ import { useFormStatus } from "react-dom";
 import { LoaderCircle } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
+import { useLocale } from "@/components/i18n/locale-provider";
 
 type FormSubmitButtonProps = {
   children: React.ReactNode;
@@ -21,7 +22,7 @@ type FormSubmitButtonProps = {
 
 export function FormSubmitButton({
   children,
-  pendingLabel = "Saving...",
+  pendingLabel,
   className,
   disabled,
   form,
@@ -31,9 +32,11 @@ export function FormSubmitButton({
   value,
   variant,
 }: FormSubmitButtonProps) {
+  const { t } = useLocale();
   const { action, pending } = useFormStatus();
   const isActiveSubmitter =
     pending && (formAction === undefined || action === formAction);
+  const resolvedPendingLabel = pendingLabel ?? t("common.saving");
 
   return (
     <Button
@@ -55,7 +58,7 @@ export function FormSubmitButton({
         />
       ) : null}
       <span aria-live={isActiveSubmitter ? "polite" : undefined}>
-        {isActiveSubmitter ? pendingLabel : children}
+        {isActiveSubmitter ? resolvedPendingLabel : children}
       </span>
     </Button>
   );

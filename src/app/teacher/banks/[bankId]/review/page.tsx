@@ -27,6 +27,9 @@ import {
   sanitizeTeacherBankReturnTo,
 } from "@/lib/teacher-focus-workspace";
 import { cn } from "@/lib/utils";
+import { formatNumber } from "@/lib/i18n/locale";
+import { getRequestLocale } from "@/lib/i18n/server";
+import { translate } from "@/lib/i18n/messages";
 
 import {
   approveBankReviewQuestion,
@@ -43,17 +46,17 @@ import {
 
 export const dynamic = "force-dynamic";
 
-function SetupNeededState() {
+function SetupNeededState({ locale }: { locale: Parameters<typeof translate>[0] }) {
   return (
     <BankWorkbenchPage>
       <header className="teacher-page-header">
         <h1 className="text-3xl font-bold tracking-tight text-slate-950">
-          Review
+          {translate(locale, "teacherLibrary.review")}
         </h1>
       </header>
       <section className="border-y border-slate-200 bg-white py-10 text-center">
         <p className="font-semibold text-slate-900">
-          Library setup is not available.
+          {translate(locale, "teacherLibrary.librarySetupUnavailable")}
         </p>
       </section>
     </BankWorkbenchPage>
@@ -74,6 +77,8 @@ export default async function TeacherBankReviewPage({
   }>;
 }) {
   const profile = await requireTeacher();
+  const locale = await getRequestLocale();
+  const t = (key: Parameters<typeof translate>[1], values?: Parameters<typeof translate>[2]) => translate(locale, key, values);
   const { bankId } = await params;
   const query = await searchParams;
   const supabase = await createClient();
@@ -105,7 +110,7 @@ export default async function TeacherBankReviewPage({
     ]);
   } catch (error) {
     if (error instanceof QuestionBankSchemaMissingError) {
-      return <SetupNeededState />;
+      return <SetupNeededState locale={locale} />;
     }
     throw error;
   }
@@ -135,7 +140,7 @@ export default async function TeacherBankReviewPage({
     (question) => ({
       disabledReason: question.publishable
         ? undefined
-        : question.hardErrors[0] ?? "Fix this question before approval.",
+        : question.hardErrors[0] ?? t("teacherLibrary.fixBeforeApproval"),
       eligible: canApprove && question.publishable,
       id: question.id,
       label: `${question.questionCode} · ${question.title}`,
@@ -159,7 +164,7 @@ export default async function TeacherBankReviewPage({
       <header className="teacher-page-header">
         <div>
           <h1 className="text-3xl font-semibold tracking-[-0.03em] text-[#1D1D1F]">
-            Review
+            {t("teacherLibrary.review")}
           </h1>
           <p className="mt-1 text-sm font-medium text-[#6E6E73]">{bank.name}</p>
         </div>
@@ -175,7 +180,7 @@ export default async function TeacherBankReviewPage({
           className="rounded-md border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-medium text-emerald-900"
           role="status"
         >
-          {query.saved}
+          {t("common.saved")}
         </p>
       ) : null}
       {query.error ? (
@@ -183,7 +188,7 @@ export default async function TeacherBankReviewPage({
           className="rounded-md border border-rose-200 bg-rose-50 px-4 py-3 text-sm font-medium text-rose-900"
           role="alert"
         >
-          {query.error}
+          {t("common.requestFailed")}
         </p>
       ) : null}
 
@@ -207,12 +212,12 @@ export default async function TeacherBankReviewPage({
           <div className="flex flex-col gap-3 border-b border-[#D2D2D7] p-4 lg:flex-row lg:items-center lg:justify-between">
             <form className="flex min-w-0 flex-1 flex-col gap-2 sm:flex-row sm:items-center">
               <div className="min-w-0 flex-1">
-                <Label className="sr-only" htmlFor="review-search">Search</Label>
+                <Label className="sr-only" htmlFor="review-search">{t("teacherLibrary.search")}</Label>
                 <Input
                   defaultValue={query.q ?? ""}
                   id="review-search"
                   name="q"
-                  placeholder="Question code or title"
+                  placeholder={t("teacherLibrary.questionCodeOrTitle")}
                 />
               </div>
               <details className="group relative">
@@ -222,31 +227,31 @@ export default async function TeacherBankReviewPage({
                     "min-h-10 cursor-pointer list-none",
                   )}
                 >
-                  Filters
+                  {t("teacherLibrary.filters")}
                 </summary>
                 <div className="mt-2 w-full space-y-3 rounded-md border border-slate-200 bg-white p-4 shadow-lg sm:absolute sm:right-0 sm:z-20 sm:w-72">
                   <div className="space-y-2">
-                    <Label htmlFor="review-status">Status</Label>
+                    <Label htmlFor="review-status">{t("teacherLibrary.status")}</Label>
                     <select
                       className="min-h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
                       defaultValue={reviewStatus ?? ""}
                       id="review-status"
                       name="status"
                     >
-                      <option value="">All Drafts</option>
-                      <option value="pending_review">Ready to review</option>
-                      <option value="needs_more_evidence">Needs attention</option>
+                      <option value="">{t("teacherLibrary.allDrafts")}</option>
+                      <option value="pending_review">{t("teacherLibrary.readyToReview")}</option>
+                      <option value="needs_more_evidence">{t("teacherLibrary.needsAttention")}</option>
                     </select>
                   </div>
                   <div className="flex gap-2">
-                    <Button type="submit">Apply</Button>
+                    <Button type="submit">{t("teacherLibrary.apply")}</Button>
                     <Button asChild type="button" variant="outline">
-                      <Link href={`/teacher/banks/${bank.id}/review`}>Reset</Link>
+                      <Link href={`/teacher/banks/${bank.id}/review`}>{t("teacherLibrary.reset")}</Link>
                     </Button>
                   </div>
                 </div>
               </details>
-              <Button type="submit">Search</Button>
+              <Button type="submit">{t("teacherLibrary.search")}</Button>
             </form>
 
             {canApprove && publishableQuestions.length ? (
@@ -263,17 +268,20 @@ export default async function TeacherBankReviewPage({
                 ))}
                 <FormSubmitButton
                   className="w-full"
-                  pendingLabel="Approving…"
+                  pendingLabel={t("teacherLibrary.approving")}
                 >
-                  Approve current page · {publishableQuestions.length}
+                  {t("teacherLibrary.approveCurrentPage", {
+                    count: formatNumber(locale, publishableQuestions.length),
+                  })}
                 </FormSubmitButton>
                 <p className="mt-2 text-xs leading-5 text-slate-600">
-                  Approval confirms these questions for this Library. Content
-                  you did not preview remains your responsibility.
+                  {t("teacherLibrary.approvalResponsibility")}
                 </p>
                 {blockedCount ? (
                   <p className="mt-1 text-xs font-medium text-rose-700">
-                    {blockedCount} blocked excluded
+                    {t("teacherLibrary.blockedExcluded", {
+                      count: formatNumber(locale, blockedCount),
+                    })}
                   </p>
                 ) : null}
               </form>
@@ -285,9 +293,11 @@ export default async function TeacherBankReviewPage({
               {canApprove ? (
                 <div className="flex min-h-12 items-center gap-3 border-b border-slate-200 px-4 text-sm font-semibold text-slate-700">
                   <BulkSelectAllCheckbox
-                    label={`Select all ${publishableQuestions.length} approvable questions on this page`}
+                    label={t("teacherLibrary.selectAllApprovable", {
+                      count: formatNumber(locale, publishableQuestions.length),
+                    })}
                   />
-                  Select page
+                  {t("teacherLibrary.selectPage")}
                 </div>
               ) : null}
 
@@ -295,16 +305,18 @@ export default async function TeacherBankReviewPage({
                 {draftPage.items.map((question) => {
                   const status = question.hardErrors.length
                     ? {
-                        label: "Blocked",
+                        label: t("teacherLibrary.blocked"),
                         tone: "rose" as const,
                       }
                     : question.softWarnings.length
                       ? {
-                          label: `${question.softWarnings.length} warning${question.softWarnings.length === 1 ? "" : "s"}`,
+                          label: t("teacherLibrary.warningCount", {
+                            count: formatNumber(locale, question.softWarnings.length),
+                          }),
                           tone: "amber" as const,
                         }
                       : {
-                          label: "Ready",
+                          label: t("teacherLibrary.ready"),
                           tone: "sky" as const,
                         };
                   const editHref = question.reviewItemId
@@ -340,21 +352,23 @@ export default async function TeacherBankReviewPage({
                                 value={question.id}
                               />
                               <FormSubmitButton
-                                pendingLabel="Approving…"
+                                pendingLabel={t("teacherLibrary.approving")}
                                 size="sm"
                               >
-                                Approve
+                                {t("teacherLibrary.approve")}
                               </FormSubmitButton>
                             </form>
                           ) : editHref ? (
                             <Button asChild size="sm">
-                              <Link href={editHref}>Edit</Link>
+                              <Link href={editHref}>{t("teacherLibrary.edit")}</Link>
                             </Button>
                           ) : null}
                           {canApprove ? (
                             <details className="group relative">
                               <summary
-                                aria-label={`More actions for ${question.title}`}
+                                aria-label={t("teacherLibrary.moreActionsFor", {
+                                  title: question.title,
+                                })}
                                 className="inline-flex min-h-10 min-w-10 cursor-pointer list-none items-center justify-center rounded-md text-slate-600 hover:bg-slate-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-600"
                               >
                                 <MoreHorizontal
@@ -368,7 +382,7 @@ export default async function TeacherBankReviewPage({
                                     className="flex min-h-10 items-center rounded-md px-3 text-sm font-medium hover:bg-slate-50"
                                     href={editHref}
                                   >
-                                    Edit
+                                    {t("teacherLibrary.edit")}
                                   </Link>
                                 ) : null}
                                 <form action={markBankReviewDraftNeedsFix}>
@@ -385,11 +399,11 @@ export default async function TeacherBankReviewPage({
                                   <input name="reason" type="hidden" value="" />
                                   <FormSubmitButton
                                     className="w-full justify-start"
-                                    pendingLabel="Updating…"
+                                    pendingLabel={t("teacherLibrary.updating")}
                                     size="sm"
                                     variant="ghost"
                                   >
-                                    Needs fix
+                                    {t("teacherLibrary.needsFix")}
                                   </FormSubmitButton>
                                 </form>
                                 <form action={rejectBankReviewDraftQuestion}>
@@ -406,11 +420,11 @@ export default async function TeacherBankReviewPage({
                                   <input name="reason" type="hidden" value="" />
                                   <FormSubmitButton
                                     className="w-full justify-start text-rose-700"
-                                    pendingLabel="Rejecting…"
+                                    pendingLabel={t("teacherLibrary.rejecting")}
                                     size="sm"
                                     variant="ghost"
                                   >
-                                    Reject
+                                    {t("teacherLibrary.reject")}
                                   </FormSubmitButton>
                                 </form>
                               </div>
@@ -444,7 +458,11 @@ export default async function TeacherBankReviewPage({
 
               <div className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-200 px-4 py-4 text-sm">
                 <span>
-                  {draftPage.total} results · Page {page} of {totalPages}
+                  {t("teacherLibrary.resultsPage", {
+                    page: formatNumber(locale, page),
+                    total: formatNumber(locale, draftPage.total),
+                    totalPages: formatNumber(locale, totalPages),
+                  })}
                 </span>
                 <div className="flex gap-2">
                   <Button
@@ -453,7 +471,7 @@ export default async function TeacherBankReviewPage({
                     size="sm"
                     variant="outline"
                   >
-                    <Link href={pageHref(Math.max(1, page - 1))}>Previous</Link>
+                    <Link href={pageHref(Math.max(1, page - 1))}>{t("teacherLibrary.previous")}</Link>
                   </Button>
                   <Button
                     asChild
@@ -462,7 +480,7 @@ export default async function TeacherBankReviewPage({
                     variant="outline"
                   >
                     <Link href={pageHref(Math.min(totalPages, page + 1))}>
-                      Next
+                      {t("teacherLibrary.next")}
                     </Link>
                   </Button>
                 </div>
@@ -476,10 +494,10 @@ export default async function TeacherBankReviewPage({
             </>
           ) : (
             <div className="px-4 py-12 text-center">
-              <p className="font-semibold text-[#1D1D1F]">No drafts</p>
+              <p className="font-semibold text-[#1D1D1F]">{t("teacherLibrary.noDrafts")}</p>
               {canApprove ? (
                 <Button asChild className="mt-5" variant="outline">
-                  <Link href={`/teacher/banks/${bank.id}/imports`}>Import</Link>
+                  <Link href={`/teacher/banks/${bank.id}/imports`}>{t("teacherLibrary.import")}</Link>
                 </Button>
               ) : null}
             </div>

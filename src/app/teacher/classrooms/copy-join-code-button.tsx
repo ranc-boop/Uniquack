@@ -5,7 +5,15 @@ import { Copy } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 
-export function CopyJoinCodeButton({ code }: { code: string }) {
+export function CopyJoinCodeButton({
+  code,
+  copiedLabel = "Copied",
+  copyLabel = "Copy code",
+}: {
+  code: string;
+  copiedLabel?: string;
+  copyLabel?: string;
+}) {
   const [copied, setCopied] = useState(false);
 
   return (
@@ -19,7 +27,7 @@ export function CopyJoinCodeButton({ code }: { code: string }) {
       variant="outline"
     >
       <Copy aria-hidden="true" className="mr-2 h-4 w-4" />
-      {copied ? "Copied" : "Copy code"}
+      {copied ? copiedLabel : copyLabel}
     </Button>
   );
 }

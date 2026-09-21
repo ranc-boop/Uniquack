@@ -5,6 +5,9 @@ import { StudentPendingLink } from "@/components/student/student-pending-link";
 import { StudentModuleCard, StudentWorkspaceShell } from "@/components/student/student-workspace-shell";
 import { Button } from "@/components/ui/button";
 import { requireStudentWorkspace } from "@/lib/auth/guards";
+import { formatNumber, type Locale } from "@/lib/i18n/locale";
+import { translate } from "@/lib/i18n/messages";
+import { getRequestLocale } from "@/lib/i18n/server";
 import { createClient } from "@/lib/supabase/server";
 import { listStudentAssignedWork } from "@/lib/student-work";
 
@@ -19,7 +22,7 @@ function countDueSoon(value: string | null | undefined) {
   return days <= 7;
 }
 
-async function StudentDashboardOverview() {
+async function StudentDashboardOverview({ locale }: { locale: Locale }) {
   const profile = await requireStudentWorkspace();
   const supabase = await createClient();
   const assignments = await listStudentAssignedWork({
@@ -36,79 +39,82 @@ async function StudentDashboardOverview() {
   const completed = assignments.filter(
     (assignment) => assignment.progressStatus === "completed",
   ).length;
+  const metrics: Array<[string, number]> = [
+    [translate(locale, "student.assignedWork"), assignments.length],
+    [translate(locale, "student.dueSoon"), dueSoon],
+    [translate(locale, "student.inProgress"), inProgress],
+    [translate(locale, "student.completed"), completed],
+  ];
 
   return (
     <>
       <section className="grid gap-3 md:grid-cols-4">
-        {[
-          ["Assigned work", assignments.length],
-          ["Due soon", dueSoon],
-          ["In progress", inProgress],
-          ["Completed", completed],
-        ].map(([label, count]) => (
+        {metrics.map(([label, count]) => (
           <div className="student-panel p-4" key={label}>
             <p className="text-sm font-medium text-slate-500">{label}</p>
-            <p className="mt-2 text-2xl font-bold text-slate-950">{count}</p>
+            <p className="mt-2 text-2xl font-bold text-slate-950">{formatNumber(locale, count)}</p>
           </div>
         ))}
       </section>
 
       <section className="grid gap-4 lg:grid-cols-4">
         <StudentModuleCard
-          actionLabel="View assignments"
-          eyebrow="Assigned"
+          actionLabel={translate(locale, "student.viewAssignments")}
+          eyebrow={translate(locale, "student.assigned")}
           href="/student/work"
-          status={assignments.length ? `${assignments.length} active` : "Empty"}
-          title="My Work"
+          status={assignments.length ? translate(locale, "student.active", { count: formatNumber(locale, assignments.length) }) : translate(locale, "student.empty")}
+          title={translate(locale, "student.myWork")}
         />
         <StudentModuleCard
-          actionLabel="Start a round"
-          eyebrow="Practice"
+          actionLabel={translate(locale, "student.startRound")}
+          eyebrow={translate(locale, "student.practice")}
           href="/practice"
-          title="Practice"
+          title={translate(locale, "student.practice")}
         />
         <StudentModuleCard
-          actionLabel="Review misses"
-          eyebrow="Recovery"
+          actionLabel={translate(locale, "student.reviewMisses")}
+          eyebrow={translate(locale, "student.recovery")}
           href="/mistakes"
-          title="Mistakes"
+          title={translate(locale, "student.mistakes")}
         />
         <StudentModuleCard
-          actionLabel="See progress"
-          eyebrow="Evidence"
+          actionLabel={translate(locale, "student.seeProgress")}
+          eyebrow={translate(locale, "student.evidence")}
           href="/student/progress"
-          title="Progress / Feedback"
+          title={translate(locale, "student.progressFeedback")}
         />
       </section>
     </>
   );
 }
 
-export default function StudentHomePage() {
+export default async function StudentHomePage() {
+  const locale = await getRequestLocale();
+
   return (
     <StudentWorkspaceShell
-      title="Student Dashboard"
+      title={translate(locale, "student.dashboard")}
       actions={
         <>
           <Button asChild>
-            <StudentPendingLink href="/student/work">Open My Work</StudentPendingLink>
+            <StudentPendingLink href="/student/work">{translate(locale, "student.openMyWork")}</StudentPendingLink>
           </Button>
           <Button asChild variant="outline">
-            <StudentPendingLink href="/practice">Start Practice</StudentPendingLink>
+            <StudentPendingLink href="/practice">{translate(locale, "student.startPractice")}</StudentPendingLink>
           </Button>
         </>
       }
     >
       <Suspense fallback={<StudentDashboardLoadingContent />}>
-        <StudentDashboardOverview />
+        <StudentDashboardOverview locale={locale} />
       </Suspense>
 
       <section className="grid gap-4">
         <StudentModuleCard
-          actionLabel="Browse public questions"
-          eyebrow="Discovery"
+          actionLabel={translate(locale, "student.browsePublicQuestions")}
+          eyebrow={translate(locale, "student.discovery")}
           href="/student/public-library"
-          title="Public Library"
+          title={translate(locale, "student.publicLibrary")}
         />
       </section>
 

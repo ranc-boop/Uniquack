@@ -197,14 +197,14 @@ async function main() {
   );
 
   assert(
-    normalizedTeacherPage.includes("Teacher feedback notes") &&
-      normalizedTeacherPage.includes("Save private note") &&
-      normalizedTeacherPage.includes("Send to student") &&
-      normalizedTeacherPage.includes("Private teacher note") &&
-      normalizedTeacherPage.includes("Sent to student") &&
-      normalizedStudentPage.includes("Teacher feedback") &&
-      normalizedStudentPage.includes("Feedback your teacher explicitly sent") &&
-      normalizedStudentPage.includes("Private teacher notes are not shown here") &&
+    teacherPage.includes('t("assignmentDetail.feedbackDescription")') &&
+      teacherPage.includes('t("assignmentDetail.savePrivateNote")') &&
+      teacherPage.includes('t("assignmentDetail.sendToStudent")') &&
+      teacherPage.includes('t("assignmentDetail.privateTeacherNote")') &&
+      teacherPage.includes('t("assignmentDetail.sentToStudent")') &&
+      studentPage.includes('"work.teacherFeedback"') &&
+      studentPage.includes('"work.sentFeedback"') &&
+      studentPage.includes('"work.privateNotesNotShown"') &&
       smokeAll.includes("./teacher-feedback-notes-mvp-smoke.mjs"),
     "teacher and student UI must distinguish private notes from explicitly sent feedback",
   );
