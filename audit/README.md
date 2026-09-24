@@ -55,7 +55,7 @@ EduStruct is a locally-run Next.js 16 app against a hosted Supabase project ("Cu
 
 ## Highest-risk findings
 
-1. **P1-1** Platform-admin vs org-admin mismatch on global-library access after 0077 (UI admits `profiles.role='admin'`; RLS requires org-admin membership).
+1. **Resolved historical P1-1** Platform-admin vs org-admin global-library behavior was accepted as intended on 2026-08-13; see [12-authorization-findings.md](12-authorization-findings.md). Retained here to preserve Stage 0 history, not as an open blocker.
 2. **P1-2** Dual question lifecycle fields — consolidation could silently change visibility/assignability.
 3. **P1-3** Cross-language join-code hash duplication.
 4. **P1-5 / P2-1** Versioned-RPC pairs and dormant 0004/0005 table families — deleting the wrong artifact breaks runtime or hosted data.
@@ -65,6 +65,14 @@ EduStruct is a locally-run Next.js 16 app against a hosted Supabase project ("Cu
 
 1. **Hosted-schema parity check**: reconcile the hosted project's applied history against the repo chain (registers exist under `docs/security/`); confirm dormant tables are empty before any drop plan.
 2. **RPC call-site census**: per versioned/unversioned pair, prove which functions have zero callers (code + scripts + hosted usage) — prerequisite for consolidation.
-3. **Resolve the 12 unknowns** (06 doc) with the product owner — especially Google linking, dormant schema, `status` end-state, and the P1-1 admin assumption.
+3. **Resolve the remaining product/schema unknowns** in the 06 doc with the product owner — especially Google linking, dormant schema, and the `status` end-state.
 4. **Script triage**: classify `scripts/` into CI-gating / on-demand / historical-evidence, and record the canonical must-pass list.
 5. Only then scope refactors, using 05-behavioral-invariants.md as the regression contract.
+
+## Stage 1 — Current Product Workflow & Technical Risk Audit (2026-09-24)
+
+| Doc | Contents |
+|---|---|
+| [18-current-product-workflow-and-risk-audit.md](18-current-product-workflow-and-risk-audit.md) | Current Admin/Teacher/Student journeys, role-preview and localization gaps, Student Library/Study Group status, demo-data write risk, stale route/product docs, and technical findings carried forward from Stage 0. |
+
+This is a static audit of `main` at `87be4ba`, using Stage 0 as a historical technical baseline. It did not query hosted Supabase, read environment-file contents, run tests/builds, or change application/data state. Stage 0 findings above are retained for historical context; the platform-admin/org-admin item is explicitly marked resolved and is not a current blocker.
