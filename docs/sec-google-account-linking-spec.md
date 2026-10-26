@@ -190,7 +190,7 @@ Non-negotiable boundary per product direction: **AI provider access must never e
 
 ## 13. Smoke / Security Test Checklist
 
-To be implemented as automated smoke tests (following the existing `*-security-smoke.mjs` convention referenced in [docs/ai-pdf-import-cleanup-audit.md:319](docs/ai-pdf-import-cleanup-audit.md:319)) before this feature ships:
+To be implemented as automated smoke tests (following the existing `*-security-smoke.mjs` convention referenced in [docs/archive/reports/ai-pdf-import-cleanup-audit.md:319](docs/archive/reports/ai-pdf-import-cleanup-audit.md:319)) before this feature ships:
 
 - [ ] OAuth callback rejects missing `state`
 - [ ] OAuth callback rejects mismatched/foreign `state`

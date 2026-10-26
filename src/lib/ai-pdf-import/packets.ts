@@ -9,11 +9,11 @@ import type {
   AIPreanalysisResult,
 } from "./preanalysis-core";
 
-export type AIPacketPlanVersion = "packet_plan_v1";
+type AIPacketPlanVersion = "packet_plan_v1";
 
 export type AIPacketSourceKind = "pdf" | "single_image";
 
-export type AIPacketKind =
+type AIPacketKind =
   | "pdf_question_candidate"
   | "pdf_boundary_risk"
   | "pdf_page_window"
@@ -21,7 +21,7 @@ export type AIPacketKind =
   | "single_image_question"
   | "unknown";
 
-export type AIPacketStatus = "planned" | "skipped";
+type AIPacketStatus = "planned" | "skipped";
 
 export interface AIPacketPlan {
   generatedAt: string;
@@ -70,21 +70,21 @@ export interface AIWorkPacket {
   textPreview?: string | null;
 }
 
-export interface AIPacketAssetRef {
+interface AIPacketAssetRef {
   assetHintIndex?: number;
   kind: "image" | "figure" | "table" | "unknown";
   note?: string | null;
   pageNumber?: number;
 }
 
-export interface AIPacketBoundaryRiskRef {
+interface AIPacketBoundaryRiskRef {
   confidence: number;
   evidence?: string | null;
   pageNumber?: number;
   type: string;
 }
 
-export interface AIPacketPlanStats {
+interface AIPacketPlanStats {
   assetLinkedPackets: number;
   boundaryRiskPackets: number;
   estimatedTotalChars: number;
@@ -441,7 +441,7 @@ function buildPdfBoundaryPackets({
   return packets;
 }
 
-export function buildPdfPacketPlan(
+function buildPdfPacketPlan(
   preanalysis: AIPdfPreanalysisResult,
 ): AIPacketPlan {
   const warnings = [...preanalysis.warnings];
@@ -559,7 +559,7 @@ export function buildPdfPacketPlan(
   };
 }
 
-export function buildImagePacketPlan(
+function buildImagePacketPlan(
   preanalysis: AIImagePreanalysisResult,
 ): AIPacketPlan {
   if (preanalysis.status !== "completed") {

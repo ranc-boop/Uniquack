@@ -7,7 +7,7 @@ export type Json =
   | Json[];
 
 export type UserRole = "super_admin" | "admin" | "teacher" | "student";
-export type ContentStatus =
+type ContentStatus =
   | "draft"
   | "review"
   | "published"
@@ -15,20 +15,20 @@ export type ContentStatus =
   | "deprecated";
 export type QuestionType = "mcq" | "fill_blank" | "frq" | "mixed";
 export type QuestionSourceFormat = "markdown_latex" | "html" | "plain_text";
-export type TaxonomyStatus = "active" | "deprecated" | "archived";
-export type TaxonomyNodeKind = "subject" | "facet_root" | "tag";
+type TaxonomyStatus = "active" | "deprecated" | "archived";
+type TaxonomyNodeKind = "subject" | "facet_root" | "tag";
 export type TaxonomyReviewStatus =
   | "pending_review"
   | "approved"
   | "rejected"
   | "needs_review"
   | "archived";
-export type ImportBatchAssetRole =
+type ImportBatchAssetRole =
   | "source_pdf"
   | "ai_crop_candidate"
   | "unmatched"
   | "other";
-export type ImportBatchAssetStatus =
+type ImportBatchAssetStatus =
   | "pending"
   | "ready"
   | "failed"
@@ -54,7 +54,7 @@ export type AIProviderProfile = {
   updated_at: string;
 };
 
-export type AIProviderProfileSafe = Pick<
+type AIProviderProfileSafe = Pick<
   AIProviderProfile,
   | "id"
   | "name"
@@ -151,7 +151,7 @@ export type Organization = {
   updated_at: string;
 };
 
-export type OrganizationMember = {
+type OrganizationMember = {
   id: string;
   organization_id: string;
   user_id: string;
@@ -206,14 +206,14 @@ export type QuestionBankVisibility =
   | "organization"
   | "public";
 export type QuestionBankStatus = "active" | "archived" | "disabled";
-export type QuestionBankOwnerScope = "user" | "organization" | "system";
+type QuestionBankOwnerScope = "user" | "organization" | "system";
 export type QuestionApprovalStatus = "pending" | "approved";
 export type QuestionGradingCapability =
   | "deterministic"
   | "ai_review"
   | "needs_configuration";
 export type BankMemberRole = "owner" | "editor" | "viewer";
-export type BankMemberStatus = "active" | "invited" | "removed";
+type BankMemberStatus = "active" | "invited" | "removed";
 
 export type QuestionBank = {
   id: string;
@@ -426,7 +426,7 @@ export type StudentAssignmentProgress = {
   updated_at: string;
 };
 
-export type AssignmentPracticeSession = {
+type AssignmentPracticeSession = {
   assignment_id: string;
   student_id: string;
   practice_session_id: string;
@@ -515,7 +515,7 @@ export type QuestionTaxonomyAssignment = {
   updated_at: string;
 };
 
-export type TaxonomyReviewAction = {
+type TaxonomyReviewAction = {
   id: string;
   action_id: string;
   question_id: string | null;
@@ -585,7 +585,7 @@ export type PublicQuestionSubmissionStatus =
   | "rejected"
   | "withdrawn";
 
-export type PublicQuestionSubmission = {
+type PublicQuestionSubmission = {
   id: string;
   source_bank_id: string;
   source_bank_question_id: string;
@@ -602,7 +602,7 @@ export type PublicQuestionSubmission = {
   updated_at: string;
 };
 
-export type PublicQuestionSubmissionEvent = {
+type PublicQuestionSubmissionEvent = {
   id: string;
   submission_id: string;
   action_kind:
@@ -635,7 +635,7 @@ export type Video = {
   updated_at: string;
 };
 
-export type RubricStep = {
+type RubricStep = {
   id: string;
   question_id: string;
   step_order: number;
@@ -649,7 +649,7 @@ export type RubricStep = {
   updated_at: string;
 };
 
-export type QuestionAsset = {
+type QuestionAsset = {
   id: string;
   question_id: string;
   asset_kind: "image" | "pdf" | "video" | "other";
@@ -664,7 +664,7 @@ export type QuestionAsset = {
   updated_at: string;
 };
 
-export type QuestionSourceFile = {
+type QuestionSourceFile = {
   id: string;
   question_id: string | null;
   object_path: string;
@@ -677,7 +677,7 @@ export type QuestionSourceFile = {
   updated_at: string;
 };
 
-export type ImportBatch = {
+type ImportBatch = {
   id: string;
   organization_id: string | null;
   source_type:
@@ -753,7 +753,7 @@ export type AIProviderJob = {
   updated_at: string;
 };
 
-export type ImportBatchItem = {
+type ImportBatchItem = {
   id: string;
   batch_id: string;
   item_index: number;
@@ -766,7 +766,7 @@ export type ImportBatchItem = {
   updated_at: string;
 };
 
-export type ImportBatchAsset = {
+type ImportBatchAsset = {
   id: string;
   batch_id: string;
   asset_role: ImportBatchAssetRole;
@@ -809,7 +809,7 @@ export type PracticeSession = {
   updated_at: string;
 };
 
-export type PracticeSessionSource = {
+type PracticeSessionSource = {
   id: string;
   session_id: string;
   source_kind: "public_catalog" | "question_bank" | "assignment";
@@ -820,7 +820,7 @@ export type PracticeSessionSource = {
   created_at: string;
 };
 
-export type PracticeRound = {
+type PracticeRound = {
   id: string;
   organization_id: string | null;
   user_id: string;
@@ -843,7 +843,7 @@ export type PracticeRound = {
   updated_at: string;
 };
 
-export type PracticeRoundQuestion = {
+type PracticeRoundQuestion = {
   id: string;
   user_id: string;
   session_id: string;
@@ -886,7 +886,7 @@ export type PracticeAttempt = {
   updated_at: string;
 };
 
-export type PracticeHintEvent = {
+type PracticeHintEvent = {
   id: string;
   organization_id: string | null;
   user_id: string;
@@ -900,14 +900,14 @@ export type PracticeHintEvent = {
   created_at: string;
 };
 
-export type PracticeProgressReset = {
+type PracticeProgressReset = {
   user_id: string;
   reset_at: string;
   created_at: string;
   updated_at: string;
 };
 
-export type PracticeAiRequestWindow = {
+type PracticeAiRequestWindow = {
   user_id: string;
   operation: "hint" | "preference_merge" | "recommend" | "review" | "session_title";
   window_seconds: 60 | 3600;
@@ -916,7 +916,7 @@ export type PracticeAiRequestWindow = {
   updated_at: string;
 };
 
-export type PracticeWrongQuestion = {
+type PracticeWrongQuestion = {
   id: string;
   user_id: string;
   question_id: string | null;
@@ -936,7 +936,7 @@ export type PracticeWrongQuestion = {
   updated_at: string;
 };
 
-export type UserPracticePreference = {
+type UserPracticePreference = {
   user_id: string;
   organization_id: string | null;
   long_term_preference: string;
@@ -947,7 +947,7 @@ export type UserPracticePreference = {
   updated_at: string;
 };
 
-export type PracticePreferenceMergeJob = {
+type PracticePreferenceMergeJob = {
   id: string;
   organization_id: string | null;
   user_id: string;
@@ -964,7 +964,7 @@ export type PracticePreferenceMergeJob = {
   updated_at: string;
 };
 
-export type PracticeCourseFramework = {
+type PracticeCourseFramework = {
   id: string;
   organization_id: string | null;
   title: string;
@@ -985,7 +985,7 @@ export type PracticeCourseFramework = {
   deleted_at: string | null;
 };
 
-export type PracticeAgentEpisode = {
+type PracticeAgentEpisode = {
   id: string;
   user_id: string;
   session_id: string;
@@ -1082,18 +1082,6 @@ export type Database = {
       practice_preference_merge_jobs: TableDefinition<PracticePreferenceMergeJob>;
       practice_course_frameworks: TableDefinition<PracticeCourseFramework>;
       practice_agent_episodes: TableDefinition<PracticeAgentEpisode>;
-      user_question_attempts: TableDefinition<{
-        id: string;
-        user_id: string;
-        question_id: string;
-        step_id: string | null;
-        submitted_answer_html: string | null;
-        error_type: string | null;
-        is_correct: boolean | null;
-        score: number | null;
-        created_at: string;
-        updated_at: string;
-      }>;
     };
     Views: Record<string, never>;
     Functions: {

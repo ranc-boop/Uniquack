@@ -10,7 +10,7 @@ import {
 import { parseImportQuestionsJsonWithLatexRepair } from "@/lib/import-json/latex-repair";
 import type { ZipEntryData } from "@/lib/package-import/zip";
 
-export type PackageQuestionReference = {
+type PackageQuestionReference = {
   code: string;
   contentHtmlPresent: boolean;
   imageFiles: string[];
@@ -66,7 +66,7 @@ export function normalizePackagePath(path: string) {
   return path.trim().replace(/\\/g, "/").replace(/^\.\/+/, "");
 }
 
-export function isUnsafePackagePath(path: string) {
+function isUnsafePackagePath(path: string) {
   const normalized = normalizePackagePath(path);
 
   return (
@@ -89,7 +89,7 @@ export function parsePackageQuestionsJson(jsonText: string) {
   }
 }
 
-export function extractPackageQuestionReferences(rawItems: unknown[]) {
+function extractPackageQuestionReferences(rawItems: unknown[]) {
   return rawItems.map((raw): PackageQuestionReference => {
     const item = raw && typeof raw === "object" ? (raw as Record<string, unknown>) : {};
 

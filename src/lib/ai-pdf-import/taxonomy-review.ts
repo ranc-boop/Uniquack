@@ -10,23 +10,23 @@ import type {
   AITaxonomyReviewAction,
 } from "./taxonomy-bootstrap";
 
-export type AITaxonomyReviewPlanVersion = "taxonomy_review_plan_v1";
+type AITaxonomyReviewPlanVersion = "taxonomy_review_plan_v1";
 
-export type AITaxonomyReviewPlanStatus =
+type AITaxonomyReviewPlanStatus =
   | "completed"
   | "completed_with_warnings"
   | "skipped"
   | "failed";
 
-export type AITaxonomyReviewTargetType =
+type AITaxonomyReviewTargetType =
   | "draft_tag"
   | "candidate_tag"
   | "alias_candidate"
   | "draft_pack";
 
-export type AITaxonomyReviewActionType = AITaxonomyReviewAction;
+type AITaxonomyReviewActionType = AITaxonomyReviewAction;
 
-export type AITaxonomyReviewActionStatus =
+type AITaxonomyReviewActionStatus =
   | "proposed"
   | "blocked_by_validation"
   | "needs_human_review"
@@ -73,7 +73,7 @@ export interface AITaxonomyReviewActionDraft {
   warnings: string[];
 }
 
-export interface AITaxonomyProposedChange {
+interface AITaxonomyProposedChange {
   mergeTargetLabel?: string | null;
   mergeTargetTagId?: string | null;
   proposedAliases?: string[];
@@ -89,7 +89,7 @@ export interface AITaxonomyProposedChange {
   }> | null;
 }
 
-export interface AITaxonomyReviewActionValidation {
+interface AITaxonomyReviewActionValidation {
   actionAllowedForTargetType: boolean;
   duplicateRisk: boolean;
   errors: string[];
@@ -102,7 +102,7 @@ export interface AITaxonomyReviewActionValidation {
   wouldMutateOfficialTaxonomy: false;
 }
 
-export interface AITaxonomyReviewEvidenceRef {
+interface AITaxonomyReviewEvidenceRef {
   kind:
     | "draft_tag_evidence"
     | "candidate_queue_evidence"
@@ -116,7 +116,7 @@ export interface AITaxonomyReviewEvidenceRef {
   sourceIds: string[];
 }
 
-export interface AITaxonomyPatchPreview {
+interface AITaxonomyPatchPreview {
   aliasMergePreviews: AITaxonomyAliasMergePreview[];
   approvedTagPreviews: AITaxonomyApprovedTagPreview[];
   officialMutation: false;
@@ -126,7 +126,7 @@ export interface AITaxonomyPatchPreview {
   warnings: string[];
 }
 
-export interface AITaxonomyApprovedTagPreview {
+interface AITaxonomyApprovedTagPreview {
   aliases: string[];
   description?: string | null;
   label: string;
@@ -136,28 +136,28 @@ export interface AITaxonomyApprovedTagPreview {
   sourceActionId: string;
 }
 
-export interface AITaxonomyAliasMergePreview {
+interface AITaxonomyAliasMergePreview {
   aliasText: string;
   sourceActionId: string;
   targetLabel: string;
   targetTagId: string;
 }
 
-export interface AITaxonomyRejectedTargetPreview {
+interface AITaxonomyRejectedTargetPreview {
   reason: string;
   sourceActionId: string;
   targetId: string;
   targetLabel: string;
 }
 
-export interface AITaxonomyPendingTargetPreview {
+interface AITaxonomyPendingTargetPreview {
   reason: string;
   sourceActionId: string;
   targetId: string;
   targetLabel: string;
 }
 
-export interface AITaxonomyReviewPlanStats {
+interface AITaxonomyReviewPlanStats {
   actionCount: number;
   aliasMergePreviewCount: number;
   approvePreviewCount: number;
@@ -576,7 +576,7 @@ function targetMapFromBootstrapPlan(bootstrapPlan: AITaxonomyBootstrapPlan) {
   return targets;
 }
 
-export function validateTaxonomyReviewAction({
+function validateTaxonomyReviewAction({
   action,
   bootstrapPlan,
 }: {
@@ -660,7 +660,7 @@ export function validateTaxonomyReviewAction({
   };
 }
 
-export function buildTaxonomyReviewAction({
+function buildTaxonomyReviewAction({
   actionType,
   bootstrapPlan,
   target,
@@ -781,7 +781,7 @@ function actionsFromBootstrapPlan(bootstrapPlan: AITaxonomyBootstrapPlan) {
   return actions.slice(0, MAX_ACTIONS);
 }
 
-export function buildTaxonomyPatchPreview(
+function buildTaxonomyPatchPreview(
   actions: AITaxonomyReviewActionDraft[],
 ): AITaxonomyPatchPreview {
   const approvedTagPreviews: AITaxonomyApprovedTagPreview[] = [];

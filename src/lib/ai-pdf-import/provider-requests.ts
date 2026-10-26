@@ -6,7 +6,7 @@ import type {
   AIExtractionBatchPlan,
 } from "./extraction-batches";
 
-export type AIProviderRequestPlanVersion = "provider_request_plan_v1";
+type AIProviderRequestPlanVersion = "provider_request_plan_v1";
 
 export type AIProviderRequestKind =
   | "schema_text_extraction"
@@ -60,7 +60,7 @@ export interface AIProviderRequestDraft {
   };
 }
 
-export interface AIProviderRequestPlanStats {
+interface AIProviderRequestPlanStats {
   boundaryReviewRequests: number;
   estimatedTotalChars: number;
   estimatedTotalTokens?: number;

@@ -17,7 +17,7 @@ export type BulkAssetQuestionMatch = {
 
 export type BulkAssetFileKind = "image" | "pdf";
 export type BulkAssetDuplicateReason = "existing" | "queue";
-export type BulkAssetMatchStatus =
+type BulkAssetMatchStatus =
   | "matched"
   | "unmatched"
   | "ambiguous"
@@ -87,7 +87,7 @@ function isPrefixBoundary(value: string | undefined) {
   return value === undefined || value === "" || value === "_" || value === "-";
 }
 
-export function basenameForBulkAssetPath(path: string | null | undefined) {
+function basenameForBulkAssetPath(path: string | null | undefined) {
   if (!path) {
     return "";
   }
@@ -95,7 +95,7 @@ export function basenameForBulkAssetPath(path: string | null | undefined) {
   return path.split(/[\\/]/).filter(Boolean).at(-1) ?? "";
 }
 
-export function bulkAssetDuplicateKey(file: BulkAssetFileInput) {
+function bulkAssetDuplicateKey(file: BulkAssetFileInput) {
   const inferredMimeType = inferBulkAssetMimeType(file.fileName, file.mimeType);
 
   return [
@@ -210,7 +210,7 @@ export function detectBulkAssetFileKind(mimeType: string | null) {
     : null;
 }
 
-export function matchQuestionsByFilenamePrefix(
+function matchQuestionsByFilenamePrefix(
   fileName: string,
   questions: BulkAssetQuestionMatch[],
 ) {

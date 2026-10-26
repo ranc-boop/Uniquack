@@ -2,7 +2,7 @@ import "server-only";
 
 import aiPdfExtractionSchema from "./gemini-ai-pdf-extraction.schema.json";
 
-export type GeminiStructuredOutputTransport =
+type GeminiStructuredOutputTransport =
   | "response_format"
   | "response_json_schema";
 

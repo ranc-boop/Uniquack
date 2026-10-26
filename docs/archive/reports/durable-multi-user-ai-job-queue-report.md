@@ -21,7 +21,7 @@ Those paths already had resource-level guards and PR4-I request-local provider r
 - authenticated enqueue and cancellation RPCs with resource authorization.
 - service-role-only claim, heartbeat, and finish RPCs.
 
-The migration was **not applied by this PR**. The remote queue/RLS path therefore remains blocked until the clean migration is manually applied. The companion [manual apply guide](ai-provider-jobs-0033-manual-apply.md) documents the safe rollout.
+The migration was **not applied by this PR**. The remote queue/RLS path therefore remains blocked until the clean migration is manually applied. The companion [manual apply guide](../manual-apply/ai-provider-jobs-0033-manual-apply.md) documents the safe rollout.
 
 ## Enqueue and idempotency
 

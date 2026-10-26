@@ -6,10 +6,10 @@ import type {
   AIAdaptiveRereadRequestKind,
 } from "./adaptive-reread";
 
-export type AIAdaptiveRereadProviderRequestPlanVersion =
+type AIAdaptiveRereadProviderRequestPlanVersion =
   "adaptive_reread_provider_request_plan_v1";
 
-export type AIAdaptiveRereadProviderRequestPlanStatus =
+type AIAdaptiveRereadProviderRequestPlanStatus =
   | "completed"
   | "completed_with_warnings"
   | "skipped"
@@ -87,7 +87,7 @@ export interface AIAdaptiveRereadProviderRequestDraft {
   warnings: string[];
 }
 
-export interface AIAdaptiveRereadProviderRequestPlanStats {
+interface AIAdaptiveRereadProviderRequestPlanStats {
   estimatedTotalChars: number;
   estimatedTotalTokens?: number;
   hasImageInput: boolean;
@@ -299,7 +299,7 @@ function recommendedModeForRereadRequest(
   return "text";
 }
 
-export function estimateAdaptiveRereadProviderRequestBudget(
+function estimateAdaptiveRereadProviderRequestBudget(
   request: AIAdaptiveRereadRequest,
 ): AIAdaptiveRereadProviderRequestDraft["budget"] {
   const estimatedChars = Math.max(0, request.budget.estimatedChars);
@@ -317,7 +317,7 @@ export function estimateAdaptiveRereadProviderRequestBudget(
   };
 }
 
-export function buildAdaptiveRereadPromptContract(
+function buildAdaptiveRereadPromptContract(
   request: AIAdaptiveRereadRequest,
 ): AIAdaptiveRereadProviderRequestDraft["promptContract"] {
   const reasonCodes = uniqueStrings(
@@ -371,7 +371,7 @@ export function buildAdaptiveRereadPromptContract(
   };
 }
 
-export function buildAdaptiveRereadProviderRequestDraft({
+function buildAdaptiveRereadProviderRequestDraft({
   index,
   rereadRequest,
 }: {

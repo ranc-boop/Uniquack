@@ -33,7 +33,7 @@ export type BlueprintBuilderFormInput = {
   title: string;
 };
 
-export type BlueprintBuilderReadinessSummary = {
+type BlueprintBuilderReadinessSummary = {
   blockingReasons: string[];
   ready: boolean;
 };
@@ -136,7 +136,7 @@ export function sourceExampleFromBankQuestion(
   };
 }
 
-export function buildTaxonomyTargetsFromExamples(examples: BlueprintBuilderSourceExample[]) {
+function buildTaxonomyTargetsFromExamples(examples: BlueprintBuilderSourceExample[]) {
   const targets = new Map<string, BlueprintBuilderSourceExample["taxonomyTargets"][number]>();
 
   for (const example of examples) {
@@ -161,7 +161,7 @@ function countBy<T extends string | number>(values: T[]) {
   return Object.fromEntries(counts.entries());
 }
 
-export function buildDifficultyProfile({
+function buildDifficultyProfile({
   examples,
   teacherMix,
 }: {
@@ -184,7 +184,7 @@ export function buildDifficultyProfile({
   };
 }
 
-export function buildQuestionTypeMix({
+function buildQuestionTypeMix({
   examples,
   teacherMix,
 }: {

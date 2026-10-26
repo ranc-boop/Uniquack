@@ -2,15 +2,15 @@ import crypto from "node:crypto";
 
 import type { AITagLevel } from "./tagging-v2";
 
-export type AITaxonomyBootstrapPlanVersion = "taxonomy_bootstrap_plan_v1";
+type AITaxonomyBootstrapPlanVersion = "taxonomy_bootstrap_plan_v1";
 
-export type AITaxonomyBootstrapPlanStatus =
+type AITaxonomyBootstrapPlanStatus =
   | "completed"
   | "completed_with_warnings"
   | "skipped"
   | "failed";
 
-export type AITaxonomyPackKind =
+type AITaxonomyPackKind =
   | "core"
   | "course"
   | "exam"
@@ -18,7 +18,7 @@ export type AITaxonomyPackKind =
   | "school"
   | "candidate";
 
-export type AITaxonomyDraftStatus =
+type AITaxonomyDraftStatus =
   | "draft"
   | "pending_review"
   | "approved"
@@ -126,7 +126,7 @@ export interface AITagAliasCandidate {
   warnings: string[];
 }
 
-export interface AINearestExistingTagRef {
+interface AINearestExistingTagRef {
   label: string;
   level: AITagLevel;
   reason: string;
@@ -159,7 +159,7 @@ export interface AITaxonomyEvidence {
   snippet?: string | null;
 }
 
-export interface AITaxonomyDraftTagValidation {
+interface AITaxonomyDraftTagValidation {
   duplicateLikely: boolean;
   errors: string[];
   genericTooBroad: boolean;
@@ -171,7 +171,7 @@ export interface AITaxonomyDraftTagValidation {
   warnings: string[];
 }
 
-export interface AITaxonomyBootstrapPlanStats {
+interface AITaxonomyBootstrapPlanStats {
   aliasCandidateCount: number;
   candidateQueueCount: number;
   draftPackCount: number;

@@ -13,7 +13,7 @@ function errorCode(error: unknown) {
   return typeof error.code === "string" ? error.code : "";
 }
 
-export function isPracticePreferenceUniqueConflict(error: unknown) {
+function isPracticePreferenceUniqueConflict(error: unknown) {
   return errorCode(error) === "23505";
 }
 

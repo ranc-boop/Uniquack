@@ -2,7 +2,7 @@
 
 Status: infrastructure only. No Storage migration, no bucket visibility change, no signed URLs, no frontend change, no RLS policy change. Introduces one new read-only Postgres function.
 
-Migration: [supabase/clean-migrations/0045_question_read_authorization_helper.sql](../supabase/clean-migrations/0045_question_read_authorization_helper.sql)
+Migration: [supabase/clean-migrations/0045_question_read_authorization_helper.sql](../../../supabase/clean-migrations/0045_question_read_authorization_helper.sql)
 
 ## Helper design
 
@@ -18,13 +18,13 @@ Implementation reuses the existing helper functions (`private.is_org_staff`, `pr
 
 | Source policy | Migration | Condition reused verbatim |
 |---|---|---|
-| `questions_published_read` | [0029_teacher_role_bank_public_boundary.sql:16-23](../supabase/clean-migrations/0029_teacher_role_bank_public_boundary.sql) | `status='published' AND visibility='public' AND owner_bank_id IS NULL AND deleted_at IS NULL` |
-| `questions_staff_access` (USING half only) | [0027_bank_import_review_scope.sql:269-278](../supabase/clean-migrations/0027_bank_import_review_scope.sql) | `owner_bank_id IS NULL AND is_org_staff(organization_id)` |
-| `questions_bank_member_read` | [0027_bank_import_review_scope.sql:280-294](../supabase/clean-migrations/0027_bank_import_review_scope.sql) | active `bank_questions` row + `can_read_question_bank(bank_id)` |
-| `questions_bank_manager_write` (USING half only) | [0027_bank_import_review_scope.sql:296-309](../supabase/clean-migrations/0027_bank_import_review_scope.sql) | `can_manage_question_bank(owner_bank_id)` + bank/org match |
-| `questions_assignment_item_read` | [0028_assignment_from_bank_questions.sql:59-66](../supabase/clean-migrations/0028_assignment_from_bank_questions.sql) | `can_read_assignment_question(id)` (covers both the assigned-student path and the assignment-manager path inside that function) |
+| `questions_published_read` | [0029_teacher_role_bank_public_boundary.sql:16-23](../../../supabase/clean-migrations/0029_teacher_role_bank_public_boundary.sql) | `status='published' AND visibility='public' AND owner_bank_id IS NULL AND deleted_at IS NULL` |
+| `questions_staff_access` (USING half only) | [0027_bank_import_review_scope.sql:269-278](../../../supabase/clean-migrations/0027_bank_import_review_scope.sql) | `owner_bank_id IS NULL AND is_org_staff(organization_id)` |
+| `questions_bank_member_read` | [0027_bank_import_review_scope.sql:280-294](../../../supabase/clean-migrations/0027_bank_import_review_scope.sql) | active `bank_questions` row + `can_read_question_bank(bank_id)` |
+| `questions_bank_manager_write` (USING half only) | [0027_bank_import_review_scope.sql:296-309](../../../supabase/clean-migrations/0027_bank_import_review_scope.sql) | `can_manage_question_bank(owner_bank_id)` + bank/org match |
+| `questions_assignment_item_read` | [0028_assignment_from_bank_questions.sql:59-66](../../../supabase/clean-migrations/0028_assignment_from_bank_questions.sql) | `can_read_assignment_question(id)` (covers both the assigned-student path and the assignment-manager path inside that function) |
 
-`private.is_org_staff()` already OR's in `private.is_super_admin()` ([0001_foundations_identity_organizations.sql:170](../supabase/clean-migrations/0001_foundations_identity_organizations.sql)), so super_admin visibility is covered without a separate branch.
+`private.is_org_staff()` already OR's in `private.is_super_admin()` ([0001_foundations_identity_organizations.sql:170](../../../supabase/clean-migrations/0001_foundations_identity_organizations.sql)), so super_admin visibility is covered without a separate branch.
 
 ## Excluded write permissions
 

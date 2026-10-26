@@ -16,7 +16,7 @@ type SourceAssetDisplay = {
   size_bytes?: number | string | null;
 };
 
-export function asAIPdfRecord(value: unknown): Record<string, unknown> {
+function asAIPdfRecord(value: unknown): Record<string, unknown> {
   return value && typeof value === "object" && !Array.isArray(value)
     ? (value as Record<string, unknown>)
     : {};
@@ -26,7 +26,7 @@ export function getAIPdfSummary(summary: unknown) {
   return asAIPdfRecord(asAIPdfRecord(summary).aiPdfImport);
 }
 
-export function firstAIPdfString(
+function firstAIPdfString(
   record: Record<string, unknown>,
   keys: string[],
   fallback = "",
@@ -42,7 +42,7 @@ export function firstAIPdfString(
   return fallback;
 }
 
-export function firstAIPdfNumber(
+function firstAIPdfNumber(
   record: Record<string, unknown>,
   keys: string[],
 ) {
@@ -65,7 +65,7 @@ export function firstAIPdfNumber(
   return undefined;
 }
 
-export function stringAIPdfList(value: unknown) {
+function stringAIPdfList(value: unknown) {
   if (!Array.isArray(value)) {
     return [];
   }
@@ -150,7 +150,7 @@ export function isAIPdfBlueprintObservationCompletePhase(phase: unknown) {
   return phase === "question_blueprint_review_planned";
 }
 
-export function isFailedAIPdfStatus(status: unknown) {
+function isFailedAIPdfStatus(status: unknown) {
   const normalized = typeof status === "string" ? status.trim().toLowerCase() : "";
 
   return (
@@ -340,7 +340,7 @@ export function summarizeAIPdfError(value: unknown) {
   return Array.from(summaries);
 }
 
-export function summarizeAIPdfWarnings({
+function summarizeAIPdfWarnings({
   ai,
   status,
 }: {
@@ -409,7 +409,7 @@ export function summarizeAIPdfWarnings({
   };
 }
 
-export function formatAIPdfInputStrategy(
+function formatAIPdfInputStrategy(
   strategy: string | undefined,
   providerMode?: AiProviderMode | string,
 ) {
@@ -419,7 +419,7 @@ export function formatAIPdfInputStrategy(
   );
 }
 
-export function shortAIPdfBatchId(value: string) {
+function shortAIPdfBatchId(value: string) {
   return value.slice(0, 8);
 }
 

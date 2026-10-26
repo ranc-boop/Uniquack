@@ -6,9 +6,9 @@ import type {
   AIAdaptiveRereadProviderRequestPlan,
 } from "./adaptive-reread-provider-requests";
 
-export type AIAdaptiveRereadRunPlanVersion = "adaptive_reread_run_plan_v1";
+type AIAdaptiveRereadRunPlanVersion = "adaptive_reread_run_plan_v1";
 
-export type AIAdaptiveRereadRunPlanStatus =
+type AIAdaptiveRereadRunPlanStatus =
   | "completed"
   | "completed_with_warnings"
   | "skipped"
@@ -16,7 +16,7 @@ export type AIAdaptiveRereadRunPlanStatus =
 
 export type AIAdaptiveRereadRunMode = "shadow" | "dry_run";
 
-export type AIAdaptiveRereadRequestRunStatus =
+type AIAdaptiveRereadRequestRunStatus =
   | "ready"
   | "simulated"
   | "skipped"
@@ -33,7 +33,7 @@ export interface AIAdaptiveRereadRunPlan {
   warnings: string[];
 }
 
-export interface AIAdaptiveRereadRequestRun {
+interface AIAdaptiveRereadRequestRun {
   assetRefs: string[];
   dryRunResult?: AIAdaptiveRereadDryRunResult;
   inputBudget: {
@@ -75,7 +75,7 @@ export interface AIAdaptiveRereadRequestRun {
   warnings: string[];
 }
 
-export interface AIAdaptiveRereadDryRunResult {
+interface AIAdaptiveRereadDryRunResult {
   mergeIntent: {
     adaptiveRereadOnly: true;
     officialMerge: false;
@@ -96,7 +96,7 @@ export interface AIAdaptiveRereadDryRunResult {
   };
 }
 
-export interface AIAdaptiveRereadRunPlanStats {
+interface AIAdaptiveRereadRunPlanStats {
   estimatedTotalChars: number;
   estimatedTotalTokens?: number;
   failedRequestRunCount: number;
@@ -316,7 +316,7 @@ function requestWarningsForSimulation(request: AIAdaptiveRereadProviderRequestDr
   return warnings;
 }
 
-export function validateAdaptiveRereadDryRunOutput({
+function validateAdaptiveRereadDryRunOutput({
   packetHashes,
   packetIds,
   rereadRequestHash,
@@ -410,7 +410,7 @@ export function validateAdaptiveRereadDryRunOutput({
   };
 }
 
-export function simulateAdaptiveRereadDryRun(
+function simulateAdaptiveRereadDryRun(
   request: AIAdaptiveRereadProviderRequestDraft,
 ): AIAdaptiveRereadDryRunResult {
   const results = request.packetIds.map((packetId, index) => ({
@@ -472,7 +472,7 @@ export function simulateAdaptiveRereadDryRun(
   };
 }
 
-export function buildAdaptiveRereadRequestRun({
+function buildAdaptiveRereadRequestRun({
   mode,
   request,
 }: {

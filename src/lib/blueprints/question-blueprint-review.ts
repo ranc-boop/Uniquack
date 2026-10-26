@@ -5,7 +5,7 @@ import type {
   AIQuestionBlueprintDraftPlan,
 } from "@/lib/ai-pdf-import/question-blueprint-analyzer";
 
-export type QuestionBlueprintReviewActionPlanVersion =
+type QuestionBlueprintReviewActionPlanVersion =
   "question_blueprint_review_plan_v1";
 
 export type QuestionBlueprintReviewActionKind =
@@ -47,7 +47,7 @@ export interface QuestionBlueprintReviewAction {
   warnings: string[];
 }
 
-export interface QuestionBlueprintReviewActionStats {
+interface QuestionBlueprintReviewActionStats {
   approveReadyActionCount: number;
   generatedQuestionCount: 0;
   libraryWriteCount: 0;
@@ -61,7 +61,7 @@ export interface QuestionBlueprintReviewActionStats {
 export const QUESTION_BLUEPRINT_REVIEW_PLAN_PATH =
   "summary.aiPdfImport.questionBlueprintReviewPlan";
 
-export const QUESTION_BLUEPRINT_REVIEW_BASE_WARNINGS = [
+const QUESTION_BLUEPRINT_REVIEW_BASE_WARNINGS = [
   "question_blueprint_review_planning_only",
   "question_blueprint_review_pending_human_review",
   "question_blueprint_review_no_generated_questions",

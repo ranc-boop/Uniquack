@@ -7,7 +7,7 @@ type SupabaseServerClient = Awaited<ReturnType<typeof createClient>>;
 
 export type CourseBuilderBridgeSourceKind = "course_builder_run" | "practice_framework";
 
-export type CourseBuilderBridgeQuestion = Pick<
+type CourseBuilderBridgeQuestion = Pick<
   Question,
   "difficulty_rating" | "id" | "question_code" | "question_type" | "status" | "title"
 >;

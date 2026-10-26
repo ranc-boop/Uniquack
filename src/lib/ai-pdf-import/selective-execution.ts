@@ -4,9 +4,9 @@ import type { AIPacketPlan, AIWorkPacket } from "./packets";
 import type { AIPdfPreanalysisResult } from "./preanalysis-core";
 import type { AIPdfSegmentChunk } from "./segmentation";
 
-export type AISelectiveExecutionPlanVersion = "ai_pdf_selective_execution_v1";
+type AISelectiveExecutionPlanVersion = "ai_pdf_selective_execution_v1";
 
-export type AISelectiveExecutionMode =
+type AISelectiveExecutionMode =
   | "full_document"
   | "selective_packets"
   | "selective_with_context"
@@ -21,13 +21,13 @@ export type AISelectiveExecutionEligibility =
   | "dense_document"
   | "failed";
 
-export type AISelectiveExecutionWindowStatus =
+type AISelectiveExecutionWindowStatus =
   | "planned"
   | "materialized"
   | "provider_completed"
   | "fallback";
 
-export type AISelectiveExecutionPageMap = {
+type AISelectiveExecutionPageMap = {
   localPage: number;
   originalPage: number;
 };
@@ -39,7 +39,7 @@ export type AISelectiveExecutionUsageSummary = {
   totalTokens: number | null;
 };
 
-export type AISelectiveExecutionWindow = {
+type AISelectiveExecutionWindow = {
   boundaryRiskRefs: Array<{ confidence: number; pageNumber: number; type: string }>;
   contextHaloPages: number[];
   executionStatus: AISelectiveExecutionWindowStatus;

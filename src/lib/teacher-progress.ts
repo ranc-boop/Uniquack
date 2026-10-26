@@ -77,12 +77,12 @@ export type TeacherProgressAssignment = {
   title: string;
 };
 
-export type TeacherProgressAttentionItem = TeacherProgressAssignment & {
+type TeacherProgressAttentionItem = TeacherProgressAssignment & {
   reasons: TeacherProgressAttentionReason[];
   studentsNeedingAttentionCount: number;
 };
 
-export type TeacherProgressEvidenceItem = {
+type TeacherProgressEvidenceItem = {
   assignmentId: string;
   assignmentTitle: string;
   classroomId: string;

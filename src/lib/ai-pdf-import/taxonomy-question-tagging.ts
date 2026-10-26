@@ -1,6 +1,6 @@
 import type { TaxonomyCatalogView } from "@/components/tags/taxonomy-tag-tree-picker";
 
-export type AITaxonomyQuestionTaggingPlanVersion =
+type AITaxonomyQuestionTaggingPlanVersion =
   "taxonomy_question_tagging_plan_v2";
 
 export interface AITaxonomyQuestionRef {
@@ -10,7 +10,7 @@ export interface AITaxonomyQuestionRef {
   titlePreview: string;
 }
 
-export interface TaxonomyTagBundleValidationResult {
+interface TaxonomyTagBundleValidationResult {
   errors: string[];
   valid: boolean;
   warnings: string[];

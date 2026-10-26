@@ -17,7 +17,7 @@ function enabled(value: string | undefined) {
   return ["1", "true", "yes", "on"].includes(value?.trim().toLowerCase() ?? "");
 }
 
-export function isAIImportLLMDebugLogEnabled() {
+function isAIImportLLMDebugLogEnabled() {
   return enabled(process.env.AI_IMPORT_LLM_DEBUG_LOGS);
 }
 

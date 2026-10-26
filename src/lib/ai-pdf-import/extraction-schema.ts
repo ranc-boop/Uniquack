@@ -2,18 +2,18 @@ import type { AIWorkPacket } from "./packets";
 
 export type AIExtractionSchemaVersion = "question_extract_v1";
 
-export type AIQuestionFormat =
+type AIQuestionFormat =
   | "multiple_choice"
   | "free_response"
   | "short_answer"
   | "true_false"
   | "unknown";
 
-export type AIExtractionStatus = "valid" | "partial" | "invalid";
+type AIExtractionStatus = "valid" | "partial" | "invalid";
 
-export type AIExtractionConfidenceLevel = "high" | "medium" | "low";
+type AIExtractionConfidenceLevel = "high" | "medium" | "low";
 
-export type AIExtractionErrorCode =
+type AIExtractionErrorCode =
   | "packet_id_mismatch"
   | "packet_hash_mismatch"
   | "missing_question"
@@ -26,24 +26,24 @@ export type AIExtractionErrorCode =
   | "low_confidence"
   | "unknown_format";
 
-export interface AIExtractionError {
+interface AIExtractionError {
   code: AIExtractionErrorCode;
   message: string;
 }
 
-export interface AIExtractedOption {
+interface AIExtractedOption {
   content: string;
   label: string;
 }
 
-export interface AIExtractedAssetRef {
+interface AIExtractedAssetRef {
   assetRef?: string | null;
   kind: "image" | "figure" | "table" | "unknown";
   note?: string | null;
   pageNumber?: number | null;
 }
 
-export interface AIExtractedQuestion {
+interface AIExtractedQuestion {
   answer: string | null;
   assets: AIExtractedAssetRef[];
   explanation: string | null;
@@ -58,7 +58,7 @@ export interface AIExtractedQuestion {
   stem: string;
 }
 
-export interface AIPacketExtractionResult {
+interface AIPacketExtractionResult {
   confidence: {
     level: AIExtractionConfidenceLevel;
     score: number;
@@ -76,7 +76,7 @@ export interface AIPacketExtractionResult {
   warnings: string[];
 }
 
-export interface DraftReadyQuestionFromExtraction {
+interface DraftReadyQuestionFromExtraction {
   aiMetadata: {
     assetRefs: AIExtractedAssetRef[];
     confidence: AIPacketExtractionResult["confidence"];
@@ -96,7 +96,7 @@ export interface DraftReadyQuestionFromExtraction {
   title: string;
 }
 
-export interface DraftReadyQuestionBuildResult {
+interface DraftReadyQuestionBuildResult {
   draft: DraftReadyQuestionFromExtraction | null;
   errors: AIExtractionError[];
   warnings: string[];

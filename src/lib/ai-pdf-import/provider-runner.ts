@@ -6,17 +6,17 @@ import type {
   AIProviderRequestPlan,
 } from "./provider-requests";
 
-export type AIProviderRunPlanVersion = "provider_run_plan_v1";
+type AIProviderRunPlanVersion = "provider_run_plan_v1";
 
 export type AIProviderRunMode = "shadow" | "dry_run";
 
-export type AIProviderRunStatus =
+type AIProviderRunStatus =
   | "completed"
   | "completed_with_warnings"
   | "skipped"
   | "failed";
 
-export type AIProviderRequestRunStatus =
+type AIProviderRequestRunStatus =
   | "ready"
   | "simulated"
   | "skipped"
@@ -33,7 +33,7 @@ export interface AIProviderRunPlan {
   warnings: string[];
 }
 
-export interface AIProviderRequestRun {
+interface AIProviderRequestRun {
   batchHash: string;
   batchId: string;
   dryRunResult?: AIProviderDryRunResult;
@@ -65,7 +65,7 @@ export interface AIProviderRequestRun {
   warnings: string[];
 }
 
-export interface AIProviderDryRunResult {
+interface AIProviderDryRunResult {
   packetIds: string[];
   requestHash: string;
   requestId: string;
@@ -79,7 +79,7 @@ export interface AIProviderDryRunResult {
   };
 }
 
-export interface AIProviderRunStats {
+interface AIProviderRunStats {
   estimatedTotalChars: number;
   estimatedTotalTokens?: number;
   failedRequestCount: number;
@@ -130,7 +130,7 @@ function plannedProviderForRequest(
   return "unknown";
 }
 
-export function simulateProviderRequestDryRun(
+function simulateProviderRequestDryRun(
   request: AIProviderRequestDraft,
 ): AIProviderDryRunResult {
   const validation = validateDryRunProviderOutput({
@@ -171,7 +171,7 @@ export function simulateProviderRequestDryRun(
   };
 }
 
-export function validateDryRunProviderOutput({
+function validateDryRunProviderOutput({
   packetHashes,
   packetIds,
   results,
@@ -236,7 +236,7 @@ export function validateDryRunProviderOutput({
   };
 }
 
-export function buildProviderRequestRun({
+function buildProviderRequestRun({
   mode,
   request,
 }: {

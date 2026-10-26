@@ -16,7 +16,7 @@ export const AI_PROVIDER_JOB_POLICY = {
   workerMaxLeaseSeconds: 1800,
 } as const;
 
-export const AI_PROVIDER_JOB_STATUS_COPY: Record<
+const AI_PROVIDER_JOB_STATUS_COPY: Record<
   AIProviderJobSafeStatus["status"],
   string
 > = {

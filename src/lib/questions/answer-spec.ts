@@ -109,7 +109,7 @@ export function normalizeQuestionOptions(value: unknown): QuestionOption[] {
     .filter((item): item is QuestionOption => Boolean(item));
 }
 
-export function parseOptionsText(value: FormDataEntryValue | null) {
+function parseOptionsText(value: FormDataEntryValue | null) {
   if (typeof value !== "string") {
     return [];
   }

@@ -54,7 +54,7 @@ export type ExistingImportTag = {
   id: string;
 };
 
-export type NormalizedImportQuestion = {
+type NormalizedImportQuestion = {
   question_code: string;
   title: string;
   answer_spec: ReturnType<typeof answerSpecToJson>;
@@ -79,7 +79,7 @@ export type NormalizedImportQuestion = {
   ai_metadata?: unknown;
 };
 
-export type BatchImportPreviewItem = {
+type BatchImportPreviewItem = {
   index: number;
   raw: unknown;
   normalized: NormalizedImportQuestion | null;
@@ -342,7 +342,7 @@ function normalizeContentFormat(value: "markdown_latex" | "html" | undefined) {
   return value ?? "html";
 }
 
-export function normalizeQuestionContent(item: z.infer<typeof importItemSchema>) {
+function normalizeQuestionContent(item: z.infer<typeof importItemSchema>) {
   const contentSourceFormat = normalizeContentFormat(item.content_source_format);
   const solutionSourceFormat = normalizeContentFormat(item.solution_source_format);
   const content = renderImportContentSource({

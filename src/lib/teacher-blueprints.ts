@@ -32,7 +32,7 @@ export type TeacherBlueprintLibraryItem = QuestionBlueprint & {
   sourceBank: QuestionBank | null;
 };
 
-export type TeacherBankBlueprintLink = BankBlueprint & {
+type TeacherBankBlueprintLink = BankBlueprint & {
   blueprint: TeacherBlueprintLibraryItem | null;
 };
 

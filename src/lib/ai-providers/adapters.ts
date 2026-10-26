@@ -265,7 +265,7 @@ export function getAiProviderCapabilities(
   };
 }
 
-export function selectAiPdfInputStrategy(
+function selectAiPdfInputStrategy(
   profile: AiProviderRoutingProfile,
 ): AiPdfInputStrategy {
   const mode = inferAiProviderMode(profile);
@@ -298,7 +298,7 @@ export function selectAiPdfInputStrategy(
   return "unsupported";
 }
 
-export function isAiPdfInputStrategyImplemented(strategy: AiPdfInputStrategy) {
+function isAiPdfInputStrategyImplemented(strategy: AiPdfInputStrategy) {
   return (
     strategy === "mock" ||
     strategy === "openai_file" ||

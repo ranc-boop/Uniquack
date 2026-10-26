@@ -19,7 +19,7 @@ export const TEACHER_AI_PDF_PARSING_PROFILES = [
 export type TeacherAIPdfParsingProfile =
   (typeof TEACHER_AI_PDF_PARSING_PROFILES)[number];
 
-export type TeacherAIPdfParsingProfileOption = {
+type TeacherAIPdfParsingProfileOption = {
   description: string;
   label: string;
   value: TeacherAIPdfParsingProfile;
@@ -84,7 +84,7 @@ function usableAIPdfProfiles(profiles: SafeAIProviderProfile[]) {
     });
 }
 
-export function unavailableTeacherAIPdfParsingProfileState(): TeacherAIPdfParsingProfileState {
+function unavailableTeacherAIPdfParsingProfileState(): TeacherAIPdfParsingProfileState {
   return {
     available: false,
     defaultProfile: "standard",
@@ -93,7 +93,7 @@ export function unavailableTeacherAIPdfParsingProfileState(): TeacherAIPdfParsin
   };
 }
 
-export function buildTeacherAIPdfParsingProfileState(
+function buildTeacherAIPdfParsingProfileState(
   profiles: SafeAIProviderProfile[],
 ): TeacherAIPdfParsingProfileState {
   const usableProfiles = usableAIPdfProfiles(profiles);

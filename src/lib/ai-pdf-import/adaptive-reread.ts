@@ -1,8 +1,8 @@
 import crypto from "node:crypto";
 
-export type AIAdaptiveRereadPlanVersion = "adaptive_reread_plan_v1";
+type AIAdaptiveRereadPlanVersion = "adaptive_reread_plan_v1";
 
-export type AIAdaptiveRereadPlanStatus =
+type AIAdaptiveRereadPlanStatus =
   | "completed"
   | "completed_with_warnings"
   | "skipped"
@@ -16,7 +16,7 @@ export type AIAdaptiveRereadRequestKind =
   | "mixed_layout_context"
   | "review_only";
 
-export type AIAdaptiveRereadReasonCode =
+type AIAdaptiveRereadReasonCode =
   | "question_near_page_boundary"
   | "answer_marker_on_adjacent_page"
   | "choice_marker_split_across_pages"
@@ -76,7 +76,7 @@ export interface AIAdaptiveRereadRequest {
   warnings: string[];
 }
 
-export interface AIAdaptiveRereadReason {
+interface AIAdaptiveRereadReason {
   code: AIAdaptiveRereadReasonCode;
   confidence: number;
   message: string;
@@ -84,7 +84,7 @@ export interface AIAdaptiveRereadReason {
   pageNumbers: number[];
 }
 
-export interface AIAdaptiveRereadPlanStats {
+interface AIAdaptiveRereadPlanStats {
   estimatedTotalChars: number;
   estimatedTotalTokens?: number;
   highPriorityCount: number;

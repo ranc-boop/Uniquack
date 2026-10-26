@@ -132,7 +132,7 @@ export function normalizePublishDifficultyFilter(
   return "all";
 }
 
-export function difficultyBucket(
+function difficultyBucket(
   difficultyRating: number | null | undefined,
 ): PublishDifficultyFilter {
   if (typeof difficultyRating !== "number") return "all";

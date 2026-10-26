@@ -6,7 +6,7 @@ export type ImportAssetReferences = {
   questionAssetIds: string[];
 };
 
-export const emptyImportAssetReferences: ImportAssetReferences = {
+const emptyImportAssetReferences: ImportAssetReferences = {
   imageUrls: [],
   sourceFileIds: [],
   questionAssetIds: [],

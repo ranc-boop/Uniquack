@@ -3,15 +3,15 @@ import crypto from "node:crypto";
 import type { AICoverageRecoveryPlan, AICoverageRecoveryRequestDraft } from "./coverage-recovery";
 import type { QuestionBoundaryGuardPlan } from "./question-boundary-guard";
 
-export type AICoverageRecoveryExecutionPlanVersion =
+type AICoverageRecoveryExecutionPlanVersion =
   "coverage_recovery_executor_v1";
 
-export type AICoverageRecoveryExecutionStatus =
+type AICoverageRecoveryExecutionStatus =
   | "eligible"
   | "blocked"
   | "not_needed";
 
-export type AICoverageRecoveryExecutionBlocker =
+type AICoverageRecoveryExecutionBlocker =
   | "original_import_not_complete"
   | "missing_coverage_audit"
   | "no_concrete_recovery_windows"
@@ -30,7 +30,7 @@ export type AICoverageRecoveryCandidateClassification =
   | "visual_association_risk"
   | "insufficient_evidence";
 
-export type AICoverageRecoveryExecutionWindow = {
+type AICoverageRecoveryExecutionWindow = {
   pageNumbers: number[];
   requestId: string;
   requestKind: string;

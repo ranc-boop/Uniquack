@@ -14,7 +14,7 @@ import type {
 
 type SupabaseServerClient = Awaited<ReturnType<typeof createClient>>;
 
-export type TeacherAssignmentClassroom = Pick<
+type TeacherAssignmentClassroom = Pick<
   Classroom,
   "created_at" | "description" | "id" | "name" | "organization_id" | "status" | "subject"
 >;
@@ -37,7 +37,7 @@ export type TeacherAssignmentSummary = Pick<
   progressSummary: TeacherAssignmentProgressSummary;
 };
 
-export type TeacherAssignmentQuestion = Pick<
+type TeacherAssignmentQuestion = Pick<
   Question,
   | "difficulty_rating"
   | "id"
@@ -47,17 +47,17 @@ export type TeacherAssignmentQuestion = Pick<
   | "title"
 >;
 
-export type TeacherAssignmentEvidenceQuestion = TeacherAssignmentQuestion &
+type TeacherAssignmentEvidenceQuestion = TeacherAssignmentQuestion &
   Pick<
     Question,
     "content_html" | "deleted_at" | "owner_bank_id" | "published_at"
   >;
 
-export type TeacherAssignableQuestion = TeacherAssignmentQuestion & {
+type TeacherAssignableQuestion = TeacherAssignmentQuestion & {
   contentPreview: string;
 };
 
-export type TeacherAssignmentItem = Pick<
+type TeacherAssignmentItem = Pick<
   AssignmentItem,
   | "bank_question_id"
   | "id"
@@ -71,7 +71,7 @@ export type TeacherAssignmentItem = Pick<
   readinessIssues: string[];
 };
 
-export type TeacherAssignmentProgressSummary = {
+type TeacherAssignmentProgressSummary = {
   completedCount: number;
   inProgressCount: number;
   latestPracticeSessionAt: string | null;
@@ -80,7 +80,7 @@ export type TeacherAssignmentProgressSummary = {
   studentCount: number;
 };
 
-export type TeacherAssignmentStudentProgress = {
+type TeacherAssignmentStudentProgress = {
   completedAt: string | null;
   displayName: string;
   email: string | null;
@@ -100,7 +100,7 @@ export type TeacherAssignmentStudentProgress = {
   updatedAt: string | null;
 };
 
-export type TeacherAssignmentAttempt = {
+type TeacherAssignmentAttempt = {
   answerPreview: string;
   createdAt: string;
   feedbackSummary: string | null;
@@ -115,7 +115,7 @@ export type TeacherAssignmentAttempt = {
   sessionId: string;
 };
 
-export type TeacherAssignmentQuestionPerformance = {
+type TeacherAssignmentQuestionPerformance = {
   assignedStudentCount: number;
   assignmentItemId: string;
   attemptCount: number;
@@ -128,7 +128,7 @@ export type TeacherAssignmentQuestionPerformance = {
   studentAttemptedCount: number;
 };
 
-export type TeacherAssignmentEvidenceSummary = {
+type TeacherAssignmentEvidenceSummary = {
   attemptCount: number;
   completionRate: number | null;
   correctAttemptCount: number;

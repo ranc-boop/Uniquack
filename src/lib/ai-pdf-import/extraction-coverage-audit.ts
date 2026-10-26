@@ -1,15 +1,15 @@
 import crypto from "node:crypto";
 
-export type AIExtractionCoverageAuditPlanVersion =
+type AIExtractionCoverageAuditPlanVersion =
   "extraction_coverage_audit_plan_v1";
 
-export type AIExtractionCoverageAuditPlanStatus =
+type AIExtractionCoverageAuditPlanStatus =
   | "completed"
   | "completed_with_warnings"
   | "skipped"
   | "failed";
 
-export type AIExtractionCoverageRiskKind =
+type AIExtractionCoverageRiskKind =
   | "terminal_pages_missing_from_extraction"
   | "question_like_page_uncovered"
   | "packet_coverage_low"
@@ -84,7 +84,7 @@ export interface AIExtractionCoverageRisk {
   severity: "info" | "low" | "medium" | "high";
 }
 
-export interface AIExtractionCoverageEvidence {
+interface AIExtractionCoverageEvidence {
   batchIds: string[];
   kind:
     | "preanalysis_page_hint"
@@ -119,7 +119,7 @@ export interface AICoverageRecoveryWindow {
   windowId: string;
 }
 
-export interface AIExtractionCoverageAuditStats {
+interface AIExtractionCoverageAuditStats {
   coveredBatchCount: number;
   coveredPacketCount: number;
   expectedBatchCount: number;

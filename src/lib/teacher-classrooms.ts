@@ -47,7 +47,7 @@ type AssignmentBase = Pick<
   | "updated_at"
 >;
 
-export type TeacherClassroomSummary = ClassroomBase & {
+type TeacherClassroomSummary = ClassroomBase & {
   activeAssignmentCount: number;
   assignmentCount: number;
   coTeacherCount: number;

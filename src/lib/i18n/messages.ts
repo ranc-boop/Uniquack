@@ -1,6 +1,6 @@
 import type { Locale } from "@/lib/i18n/locale";
 
-export const EN_MESSAGES = {
+const EN_MESSAGES = {
   "chrome.language": "Language",
   "chrome.english": "English",
   "chrome.chinese": "中文",
@@ -1411,7 +1411,7 @@ export type MessageKey = keyof typeof EN_MESSAGES;
 export type TranslationValues = Record<string, number | string>;
 export type MessageCatalog = Record<MessageKey, string>;
 
-export const ZH_CN_MESSAGES: MessageCatalog = {
+const ZH_CN_MESSAGES: MessageCatalog = {
   "chrome.language": "语言",
   "chrome.english": "English",
   "chrome.chinese": "中文",

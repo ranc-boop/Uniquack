@@ -1,4 +1,4 @@
-export type AIPdfChunkStatus =
+type AIPdfChunkStatus =
   | "planned"
   | "queued"
   | "running"
@@ -54,7 +54,7 @@ export type AIPdfChunkingSummary = {
   totalChunks: number;
 };
 
-export type AIPdfPageChunkPlan = {
+type AIPdfPageChunkPlan = {
   chunkIndex: number;
   id: string;
   overlapPages: number[];
@@ -152,7 +152,7 @@ export function formatAIPdfChunkPageRange(chunk: {
     : `Pages ${chunk.pageStart}-${chunk.pageEnd}`;
 }
 
-export function planAIPdfPageChunks({
+function planAIPdfPageChunks({
   chunkSizePages = DEFAULT_CHUNK_SIZE_PAGES,
   overlapPages = DEFAULT_OVERLAP_PAGES,
   pageCount,
@@ -247,7 +247,7 @@ export function createAIPdfChunkingSummary({
   };
 }
 
-export function ensureAIPdfChunkingSummary(
+function ensureAIPdfChunkingSummary(
   aiPdfImport: Record<string, unknown>,
 ) {
   if (aiPdfImport.chunking) {

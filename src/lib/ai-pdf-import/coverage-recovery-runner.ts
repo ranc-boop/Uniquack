@@ -6,21 +6,21 @@ import type {
   AICoverageRecoveryRequestKind,
 } from "./coverage-recovery";
 
-export type AICoverageRecoveryRunPlanVersion =
+type AICoverageRecoveryRunPlanVersion =
   "coverage_recovery_run_plan_v1";
 
-export type AICoverageRecoveryRunPlanStatus =
+type AICoverageRecoveryRunPlanStatus =
   | "completed"
   | "completed_with_warnings"
   | "skipped"
   | "failed";
 
-export type AICoverageRecoveryRunItemStatus =
+type AICoverageRecoveryRunItemStatus =
   | "dry_run_ready"
   | "dry_run_skipped"
   | "dry_run_blocked";
 
-export type AICoverageRecoveryRunSkipReason =
+type AICoverageRecoveryRunSkipReason =
   | "manual_review_only"
   | "missing_request_draft"
   | "missing_page_numbers"
@@ -68,7 +68,7 @@ export interface AICoverageRecoveryRunItem {
   warnings: string[];
 }
 
-export interface AICoverageRecoveryRunValidation {
+interface AICoverageRecoveryRunValidation {
   blocksCoveredPageReextraction: boolean;
   errors: string[];
   hasBoundedPages: boolean;
@@ -84,7 +84,7 @@ export interface AICoverageRecoveryRunValidation {
   warnings: string[];
 }
 
-export interface AICoverageRecoveryDryRunResult {
+interface AICoverageRecoveryDryRunResult {
   boundedPageEnd: number | null;
   boundedPageStart: number | null;
   expectedOutputContract: {
@@ -112,7 +112,7 @@ export interface AICoverageRecoverySkippedRunItem {
   sourceTaskId: string | null;
 }
 
-export interface AICoverageRecoveryRunPlanStats {
+interface AICoverageRecoveryRunPlanStats {
   dryRunBlockedCount: number;
   dryRunReadyCount: number;
   dryRunSkippedCount: number;
@@ -234,7 +234,7 @@ function pageBounds(pageNumbers: number[]) {
   };
 }
 
-export function validateCoverageRecoveryRequestDraft(
+function validateCoverageRecoveryRequestDraft(
   request: Partial<AICoverageRecoveryRequestDraft>,
 ): AICoverageRecoveryRunValidation {
   const promptContract = asRecord(request.promptContract);
@@ -308,7 +308,7 @@ export function validateCoverageRecoveryRequestDraft(
   return validation;
 }
 
-export function buildCoverageRecoveryDryRunResult({
+function buildCoverageRecoveryDryRunResult({
   request,
   validation,
 }: {
@@ -351,7 +351,7 @@ export function buildCoverageRecoveryDryRunResult({
   };
 }
 
-export function buildCoverageRecoveryRunItem(
+function buildCoverageRecoveryRunItem(
   request: Partial<AICoverageRecoveryRequestDraft>,
 ): {
   item: AICoverageRecoveryRunItem | null;

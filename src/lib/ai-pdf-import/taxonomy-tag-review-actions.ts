@@ -5,7 +5,7 @@ import type {
   AITaxonomyQuestionTaggingSuggestion,
 } from "@/lib/ai-pdf-import/taxonomy-question-tagging";
 
-export type AITaxonomyTagReviewActionKind =
+type AITaxonomyTagReviewActionKind =
   | "approve_bundle"
   | "reject_bundle"
   | "edit_bundle"
@@ -16,7 +16,7 @@ export type AITaxonomyTagReviewActionKind =
   | "merge_alias_candidate"
   | "request_manual_review";
 
-export interface AITaxonomyTagReviewActionSafety {
+interface AITaxonomyTagReviewActionSafety {
   noDbMutation: true;
   noOfficialTagWrite: true;
   noProviderCall: true;
@@ -24,7 +24,7 @@ export interface AITaxonomyTagReviewActionSafety {
   planningOnly: true;
 }
 
-export interface AITaxonomyTagReviewActionDraft {
+interface AITaxonomyTagReviewActionDraft {
   actionId: string;
   actionKind: AITaxonomyTagReviewActionKind;
   confidence: number;

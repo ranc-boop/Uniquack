@@ -55,7 +55,7 @@ type FinalizeArgs = {
   visible_thought?: string;
 };
 
-export type PracticeFinishRequest = {
+type PracticeFinishRequest = {
   reason: "scope_exhausted" | "goal_satisfied" | "diminishing_returns";
   reportFocus: string;
   visibleThought: string;
@@ -364,7 +364,7 @@ const finishTool: PracticeToolDefinition = {
   },
 };
 
-export const ALL_RECOMMENDATION_TOOLS: PracticeToolDefinition[] = [
+const ALL_RECOMMENDATION_TOOLS: PracticeToolDefinition[] = [
   browseTool,
   searchTool,
   finalizeTool,

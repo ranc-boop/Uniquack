@@ -36,8 +36,4 @@ export const questionStatusSchema = z.object({
   status: contentStatusSchema,
 });
 
-export const questionDeleteSchema = z.object({
-  id: uuidSchema,
-});
-
 export const questionTagIdsSchema = tagIdsFormSchema;

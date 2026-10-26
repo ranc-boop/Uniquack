@@ -7,7 +7,7 @@ import type {
 
 type SupabaseAdminClient = any;
 
-export type AIOperationsAlert = {
+type AIOperationsAlert = {
   code:
     | "budget_threshold"
     | "circuit_open"

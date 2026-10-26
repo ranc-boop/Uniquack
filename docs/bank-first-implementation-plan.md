@@ -8,9 +8,9 @@ This plan slices the bank-first rebuild into small PRs. It is not an implementat
 
 Available on current `main`:
 
-- `docs/classroom-first-rollback-dry-run.md`
-- `docs/bank-first-reconciliation-execution-plan.md`
-- `docs/school-workflow-mvp-checkpoint.md`
+- `docs/archive/reports/classroom-first-rollback-dry-run.md`
+- `docs/archive/reports/bank-first-reconciliation-execution-plan.md`
+- `docs/archive/reports/school-workflow-mvp-checkpoint.md`
 - `docs/product-role-classroom-assignment-plan.md`
 
 Missing from current `main` during this task:

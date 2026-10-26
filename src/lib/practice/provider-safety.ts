@@ -2,7 +2,7 @@ import "server-only";
 
 import { classifyAIProviderError } from "@/lib/ai-providers/errors";
 
-export type PracticeProviderErrorCode =
+type PracticeProviderErrorCode =
   | "practice_generation_failed"
   | "provider_invalid_response"
   | "provider_rate_limited"

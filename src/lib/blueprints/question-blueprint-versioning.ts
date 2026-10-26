@@ -11,7 +11,7 @@ export type QuestionBlueprintVersionSnapshot = {
   version: number;
 };
 
-export type QuestionBlueprintVersionHistorySummary = {
+type QuestionBlueprintVersionHistorySummary = {
   latestVersion: number;
   versionCount: number;
 };

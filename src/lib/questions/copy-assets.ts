@@ -15,7 +15,7 @@ export type CopyableQuestionAsset = {
   storage_path: string;
 };
 
-export type CopiedQuestionAsset = {
+type CopiedQuestionAsset = {
   altText: string;
   assetId: string;
   bucket: string;

@@ -22,7 +22,6 @@ import { createClient, createServiceRoleClient } from "@/lib/supabase/server";
 import { uuidSchema } from "@/lib/validations/common";
 import {
   questionCreateSchema,
-  questionDeleteSchema,
   questionStatusSchema,
   questionUpdateSchema,
 } from "@/lib/validations/question";
@@ -472,27 +471,6 @@ export async function updateQuestion(formData: FormData) {
   revalidatePath("/videos");
   revalidatePath("/admin/videos");
   redirectWithSaved(returnTo, "Question updated.");
-}
-
-export async function deleteQuestion(formData: FormData) {
-  let questionId = "";
-
-  try {
-    await requireAdmin();
-    const parsed = questionDeleteSchema.parse(Object.fromEntries(formData));
-    const supabase = await createClient();
-    questionId = parsed.id;
-    await deleteQuestionById({ questionId: parsed.id, supabase });
-  } catch (error) {
-    redirectWithError("/admin/questions", formatActionError(error));
-  }
-
-  revalidatePath("/admin/questions");
-  revalidatePath("/questions");
-  revalidatePath("/admin/videos");
-  revalidatePath("/videos");
-  revalidatePath(`/questions/${questionId}`);
-  redirectWithSaved("/admin/questions", "Question deleted.");
 }
 
 async function deleteQuestionById({

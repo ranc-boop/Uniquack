@@ -6,15 +6,15 @@ import type {
   AIExtractionCoverageRisk,
 } from "./extraction-coverage-audit";
 
-export type AICoverageRecoveryPlanVersion = "coverage_recovery_plan_v1";
+type AICoverageRecoveryPlanVersion = "coverage_recovery_plan_v1";
 
-export type AICoverageRecoveryPlanStatus =
+type AICoverageRecoveryPlanStatus =
   | "completed"
   | "completed_with_warnings"
   | "skipped"
   | "failed";
 
-export type AICoverageRecoveryTaskKind =
+type AICoverageRecoveryTaskKind =
   | "terminal_page_recovery"
   | "uncovered_question_like_page_recovery"
   | "failed_chunk_recovery"
@@ -42,7 +42,7 @@ export interface AICoverageRecoveryPlan {
   warnings: string[];
 }
 
-export interface AICoverageRecoveryTask {
+interface AICoverageRecoveryTask {
   batchIds: string[];
   evidence: AICoverageRecoveryEvidence[];
   execution: {
@@ -107,7 +107,7 @@ export interface AICoverageRecoveryRequestDraft {
   warnings: string[];
 }
 
-export interface AICoverageRecoverySkippedWindow {
+interface AICoverageRecoverySkippedWindow {
   message: string;
   reason:
     | "missing_page_numbers"
@@ -118,7 +118,7 @@ export interface AICoverageRecoverySkippedWindow {
   windowId: string;
 }
 
-export interface AICoverageRecoveryEvidence {
+interface AICoverageRecoveryEvidence {
   batchIds: string[];
   kind:
     | "coverage_audit_risk"
@@ -133,7 +133,7 @@ export interface AICoverageRecoveryEvidence {
   sourceIds: string[];
 }
 
-export interface AICoverageRecoveryPlanStats {
+interface AICoverageRecoveryPlanStats {
   failedChunkRecoveryCount: number;
   highPriorityCount: number;
   manualReviewOnlyCount: number;
@@ -306,7 +306,7 @@ function matchingRisks({
   });
 }
 
-export function buildCoverageRecoveryTaskFromWindow({
+function buildCoverageRecoveryTaskFromWindow({
   auditPlan,
   window,
 }: {
@@ -498,7 +498,7 @@ function taskFromUncoveredQuestionLikeRisk(
   };
 }
 
-export function buildCoverageRecoveryTasks(
+function buildCoverageRecoveryTasks(
   auditPlan: Partial<AIExtractionCoverageAuditPlan>,
 ): {
   skippedWindows: AICoverageRecoverySkippedWindow[];
@@ -615,7 +615,7 @@ function preferredStrategyForTask(
   return "manual_review";
 }
 
-export function buildCoverageRecoveryRequestDraft(
+function buildCoverageRecoveryRequestDraft(
   task: AICoverageRecoveryTask,
 ): AICoverageRecoveryRequestDraft | null {
   if (task.recommendedStrategy === "manual_review" || !task.pageNumbers.length) {
@@ -664,7 +664,7 @@ export function buildCoverageRecoveryRequestDraft(
   };
 }
 
-export function buildCoverageRecoveryRequestDrafts(
+function buildCoverageRecoveryRequestDrafts(
   tasks: AICoverageRecoveryTask[],
 ) {
   return tasks

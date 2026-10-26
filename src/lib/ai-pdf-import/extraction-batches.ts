@@ -1,17 +1,17 @@
 import type { AIPacketPlan, AIWorkPacket } from "./packets";
 
-export type AIExtractionBatchPlanVersion = "extraction_batch_plan_v1";
+type AIExtractionBatchPlanVersion = "extraction_batch_plan_v1";
 
-export type AIExtractionBatchKind =
+type AIExtractionBatchKind =
   | "text_question_batch"
   | "boundary_risk_batch"
   | "asset_linked_batch"
   | "single_image_batch"
   | "mixed_review_batch";
 
-export type AIExtractionBatchStatus = "planned" | "skipped" | "failed";
+type AIExtractionBatchStatus = "planned" | "skipped" | "failed";
 
-export interface AIExtractionBatchPacketRef {
+interface AIExtractionBatchPacketRef {
   assetRefCount: number;
   boundaryRiskCount: number;
   estimatedChars: number;
@@ -39,7 +39,7 @@ export interface AIExtractionBatch {
   status: AIExtractionBatchStatus;
 }
 
-export interface AIExtractionBatchPlanStats {
+interface AIExtractionBatchPlanStats {
   assetLinkedBatches: number;
   boundaryRiskBatches: number;
   estimatedTotalChars: number;

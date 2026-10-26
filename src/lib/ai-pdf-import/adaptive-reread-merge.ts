@@ -1,15 +1,15 @@
 import crypto from "node:crypto";
 
-export type AIAdaptiveRereadMergePlanVersion =
+type AIAdaptiveRereadMergePlanVersion =
   "adaptive_reread_merge_plan_v1";
 
-export type AIAdaptiveRereadMergePlanStatus =
+type AIAdaptiveRereadMergePlanStatus =
   | "completed"
   | "completed_with_warnings"
   | "skipped"
   | "failed";
 
-export type AIAdaptiveRereadMergeAction =
+type AIAdaptiveRereadMergeAction =
   | "suggest_fill_missing_field"
   | "suggest_replace_low_confidence_field"
   | "suggest_attach_asset_ref"
@@ -19,7 +19,7 @@ export type AIAdaptiveRereadMergeAction =
   | "flag_review_required"
   | "skip";
 
-export type AIAdaptiveRereadMergeField =
+type AIAdaptiveRereadMergeField =
   | "stem"
   | "options"
   | "answer"
@@ -31,7 +31,7 @@ export type AIAdaptiveRereadMergeField =
   | "reviewRequired"
   | "unknown";
 
-export type AIAdaptiveRereadMergeReasonCode =
+type AIAdaptiveRereadMergeReasonCode =
   | "missing_field"
   | "low_confidence_field"
   | "boundary_reread_available"
@@ -54,7 +54,7 @@ export interface AIAdaptiveRereadMergePlan {
   warnings: string[];
 }
 
-export interface AIAdaptiveRereadMergeItem {
+interface AIAdaptiveRereadMergeItem {
   action: AIAdaptiveRereadMergeAction;
   confidence: number;
   field: AIAdaptiveRereadMergeField;
@@ -85,7 +85,7 @@ export interface AIAdaptiveRereadMergeItem {
   warnings: string[];
 }
 
-export interface AIAdaptiveRereadMergeReason {
+interface AIAdaptiveRereadMergeReason {
   code: AIAdaptiveRereadMergeReasonCode;
   evidenceRefs: {
     packetIds: string[];
@@ -97,7 +97,7 @@ export interface AIAdaptiveRereadMergeReason {
   message: string;
 }
 
-export interface AIAdaptiveRereadMergePlanStats {
+interface AIAdaptiveRereadMergePlanStats {
   conflictCount: number;
   highPriorityCount: number;
   lowPriorityCount: number;
@@ -435,7 +435,7 @@ function itemShapeForRun(run: AdaptiveRunMeta): {
   };
 }
 
-export function buildAdaptiveRereadMergeItem(
+function buildAdaptiveRereadMergeItem(
   input: MergeItemInput,
 ): AIAdaptiveRereadMergeItem {
   const mergeItemHash = stableHash({
@@ -495,7 +495,7 @@ export function buildAdaptiveRereadMergeItem(
   };
 }
 
-export function buildAdaptiveRereadMergeItems(
+function buildAdaptiveRereadMergeItems(
   aiPdfImport: Record<string, unknown>,
 ): AIAdaptiveRereadMergeItem[] {
   const runPlan = normalizeRunPlan(aiPdfImport);

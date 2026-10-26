@@ -10,17 +10,17 @@ import {
   type AINormalizedBlueprintObservationPacket,
 } from "@/lib/ai-pdf-import/blueprint-observation";
 
-export type AIBlueprintObservationClusterPlanVersion =
+type AIBlueprintObservationClusterPlanVersion =
   "blueprint_observation_cluster_plan_v1";
 
-export type AIBlueprintObservationClusterPlanStatus =
+type AIBlueprintObservationClusterPlanStatus =
   | "planned"
   | "skipped"
   | "failed";
 
-export type AIBlueprintObservationClusterWarning = string;
+type AIBlueprintObservationClusterWarning = string;
 
-export interface AIBlueprintObservationClusterFingerprint {
+interface AIBlueprintObservationClusterFingerprint {
   answerStructure: string;
   blockType: string;
   cognitiveDemand: string;
@@ -46,7 +46,7 @@ export interface AIBlueprintObservationCluster {
   warnings: AIBlueprintObservationClusterWarning[];
 }
 
-export interface AIBlueprintObservationClusterStats {
+interface AIBlueprintObservationClusterStats {
   clusterCount: number;
   generatedQuestionCount: 0;
   megaClusterAvoidedCount: number;
@@ -90,7 +90,7 @@ type GroupedClusterEntries = {
 export const AI_BLUEPRINT_OBSERVATION_CLUSTER_PLAN_PATH =
   "summary.aiPdfImport.blueprintObservationClusterPlan";
 
-export const BLUEPRINT_OBSERVATION_CLUSTER_BASE_WARNINGS = [
+const BLUEPRINT_OBSERVATION_CLUSTER_BASE_WARNINGS = [
   "blueprint_observation_clustering_planning_only",
   "blueprint_observation_clustering_deterministic",
   "blueprint_observation_clustering_no_generation",

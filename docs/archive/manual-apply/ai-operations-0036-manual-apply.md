@@ -1,6 +1,6 @@
 # AI Operations Migration 0036 Manual Apply
 
-Apply only [`0036_ai_operations_launch_readiness.sql`](../supabase/clean-migrations/0036_ai_operations_launch_readiness.sql) to the clean Supabase project after the PR is merged.
+Apply only [`0036_ai_operations_launch_readiness.sql`](../../../supabase/clean-migrations/0036_ai_operations_launch_readiness.sql) to the clean Supabase project after the PR is merged.
 
 This forward-only migration adds the closed-beta operations layer. It does not alter migrations `0033`, `0034`, or `0035`, and it does not create provider profiles, credentials, Review Drafts, Questions, or Assignments.
 

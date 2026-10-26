@@ -19,7 +19,7 @@ type SupabaseLike = {
   from: (table: string) => any;
 };
 
-export type QuestionBlueprintReviewActionStatus =
+type QuestionBlueprintReviewActionStatus =
   | "pending_review"
   | "approved"
   | "rejected"
@@ -50,7 +50,7 @@ export type QuestionBlueprintRow = {
   version: number;
 };
 
-export type QuestionBlueprintExampleRow = {
+type QuestionBlueprintExampleRow = {
   asset_refs: string[];
   evidence_snippets: string[];
   source_kind: "import_batch" | "question" | "pdf_page" | "image" | "manual" | "unknown";

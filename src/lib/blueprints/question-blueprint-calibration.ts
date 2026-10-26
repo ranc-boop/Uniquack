@@ -22,7 +22,7 @@ import {
   type QuestionBlueprintRepairAttempt,
 } from "@/lib/blueprints/question-blueprint-repair";
 
-export type QuestionBlueprintCalibrationReadiness =
+type QuestionBlueprintCalibrationReadiness =
   | "uncalibrated"
   | "calibrating"
   | "generation_ready"
@@ -42,7 +42,7 @@ export type QuestionBlueprintCalibrationRequest = {
   repairEnabled?: boolean;
 };
 
-export type QuestionBlueprintCalibrationSample = {
+type QuestionBlueprintCalibrationSample = {
   adherenceScore: number;
   adherenceWarnings: string[];
   answerReady: boolean;
@@ -61,7 +61,7 @@ export type QuestionBlueprintCalibrationSample = {
   validationWarnings: string[];
 };
 
-export type QuestionBlueprintCalibrationResult = {
+type QuestionBlueprintCalibrationResult = {
   adherenceScore: number;
   blockingReasons: string[];
   diversityScore: number;

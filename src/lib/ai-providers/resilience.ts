@@ -29,7 +29,7 @@ export type AIProviderRetryResult<T> = {
   value: T;
 };
 
-export const DEFAULT_AI_PROVIDER_RETRY_POLICY: AIProviderRetryPolicy = {
+const DEFAULT_AI_PROVIDER_RETRY_POLICY: AIProviderRetryPolicy = {
   baseDelayMs: 1_000,
   maxAttempts: 4,
   maxDelayMs: 12_000,

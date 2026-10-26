@@ -34,12 +34,12 @@ export type StudentWorkSummary = AssignmentSummaryRow & {
   progressStatus: "not_started" | "in_progress" | "completed";
 };
 
-export type StudentWorkQuestion = Pick<
+type StudentWorkQuestion = Pick<
   Question,
   "difficulty_rating" | "id" | "question_code" | "question_type" | "status" | "title"
 >;
 
-export type StudentWorkItem = Pick<
+type StudentWorkItem = Pick<
   AssignmentItem,
   | "bank_question_id"
   | "id"

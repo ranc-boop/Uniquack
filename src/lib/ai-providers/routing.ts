@@ -54,7 +54,7 @@ type RuntimeState = {
   providerProfileId: string;
 };
 
-export type AIProviderRouteCandidate = {
+type AIProviderRouteCandidate = {
   mode: "normal" | "half_open_probe";
   profile: SafeAIProviderProfile;
   routeOrder: number;
@@ -85,7 +85,7 @@ export type AIProviderRouteAttemptBudget = {
 // multiply a single routed provider request into unbounded retries.
 export const AI_PROVIDER_ROUTE_TOTAL_ATTEMPT_BUDGET = 4;
 
-export class AIProviderRoutingConfigurationError extends Error {
+class AIProviderRoutingConfigurationError extends Error {
   constructor(message: string) {
     super(message);
     this.name = "AIProviderRoutingConfigurationError";

@@ -1,4 +1,4 @@
-export const MOCK_AI_PDF_IMPORT_BASE_URL = "mock://ai-pdf-import";
+const MOCK_AI_PDF_IMPORT_BASE_URL = "mock://ai-pdf-import";
 
 export function isMockAIProviderUrl(value: string) {
   return value.trim() === MOCK_AI_PDF_IMPORT_BASE_URL;

@@ -6,16 +6,16 @@ import type {
   AICoverageRecoverySkippedRunItem,
 } from "./coverage-recovery-runner";
 
-export type AICoverageRecoveryMergePlanVersion =
+type AICoverageRecoveryMergePlanVersion =
   "coverage_recovery_merge_plan_v1";
 
-export type AICoverageRecoveryMergePlanStatus =
+type AICoverageRecoveryMergePlanStatus =
   | "completed"
   | "completed_with_warnings"
   | "skipped"
   | "failed";
 
-export type AICoverageRecoveryMergeItemKind =
+type AICoverageRecoveryMergeItemKind =
   | "future_recovered_question_suggestion"
   | "future_asset_link_suggestion"
   | "future_answer_key_suggestion"
@@ -23,7 +23,7 @@ export type AICoverageRecoveryMergeItemKind =
   | "manual_review_only"
   | "no_recovered_content_available";
 
-export type AICoverageRecoveryMergeItemStatus =
+type AICoverageRecoveryMergeItemStatus =
   | "planned"
   | "blocked_until_recovery_result"
   | "manual_review_required"
@@ -43,7 +43,7 @@ export interface AICoverageRecoveryMergePlan {
   warnings: string[];
 }
 
-export interface AICoverageRecoveryMergeItem {
+interface AICoverageRecoveryMergeItem {
   batchIds: string[];
   evidence: AICoverageRecoveryMergeEvidence[];
   kind: AICoverageRecoveryMergeItemKind;
@@ -61,7 +61,7 @@ export interface AICoverageRecoveryMergeItem {
   warnings: string[];
 }
 
-export interface AICoverageRecoveryPlannedSuggestion {
+interface AICoverageRecoveryPlannedSuggestion {
   contentAvailableNow: false;
   expectedFutureFields: string[];
   futureRecoveredContentRequired: true;
@@ -79,7 +79,7 @@ export interface AICoverageRecoveryPlannedSuggestion {
   targetPages: number[];
 }
 
-export interface AICoverageRecoveryMergeSafety {
+interface AICoverageRecoveryMergeSafety {
   attachAsSuggestionOnly: true;
   deleteExistingDraft: false;
   mutateExistingQuestion: false;
@@ -92,7 +92,7 @@ export interface AICoverageRecoveryMergeSafety {
   reviewDraftWrite: false;
 }
 
-export interface AICoverageRecoveryMergeReview {
+interface AICoverageRecoveryMergeReview {
   approved: false;
   executed: false;
   reason:
@@ -105,7 +105,7 @@ export interface AICoverageRecoveryMergeReview {
   reviewerRole: "admin" | "teacher" | "curriculum_reviewer";
 }
 
-export interface AICoverageRecoveryMergeEvidence {
+interface AICoverageRecoveryMergeEvidence {
   batchIds: string[];
   kind:
     | "coverage_audit_risk"
@@ -121,7 +121,7 @@ export interface AICoverageRecoveryMergeEvidence {
   sourceIds: string[];
 }
 
-export interface AICoverageRecoveryDuplicateGuard {
+interface AICoverageRecoveryDuplicateGuard {
   currentResult: "not_run_planning_only";
   guardId: string;
   pageNumbers: number[];
@@ -137,7 +137,7 @@ export interface AICoverageRecoveryDuplicateGuard {
   warning: string;
 }
 
-export interface AICoverageRecoveryMergePolicy {
+interface AICoverageRecoveryMergePolicy {
   completionSentinelRequired: true;
   dbMutationAllowedNow: false;
   duplicateHandling: "block_or_review_on_duplicate_risk";
@@ -151,7 +151,7 @@ export interface AICoverageRecoveryMergePolicy {
   sourcePageRefsRequired: true;
 }
 
-export interface AICoverageRecoveryMergePlanStats {
+interface AICoverageRecoveryMergePlanStats {
   blockedUntilRecoveryResultCount: number;
   duplicateGuardCount: number;
   futureSuggestionCount: number;
@@ -302,7 +302,7 @@ function plannedSuggestion({
   };
 }
 
-export function buildCoverageRecoveryMergeItemFromRunItem(
+function buildCoverageRecoveryMergeItemFromRunItem(
   runItem: AICoverageRecoveryRunItem,
 ): AICoverageRecoveryMergeItem {
   const pageNumbers = uniqueNumbers(runItem.pageNumbers);
@@ -452,7 +452,7 @@ function buildNoRecoveredContentItem(): AICoverageRecoveryMergeItem {
   };
 }
 
-export function buildCoverageRecoveryMergeItems(
+function buildCoverageRecoveryMergeItems(
   runPlan: Partial<AICoverageRecoveryRunPlan>,
 ): AICoverageRecoveryMergeItem[] {
   const items = [
@@ -467,7 +467,7 @@ export function buildCoverageRecoveryMergeItems(
   return items;
 }
 
-export function buildCoverageRecoveryDuplicateGuards(
+function buildCoverageRecoveryDuplicateGuards(
   mergeItems: AICoverageRecoveryMergeItem[],
 ): AICoverageRecoveryDuplicateGuard[] {
   const rules: AICoverageRecoveryDuplicateGuard["rule"][] = [
@@ -506,7 +506,7 @@ export function buildCoverageRecoveryDuplicateGuards(
   return guards;
 }
 
-export function buildCoverageRecoveryMergePolicy(): AICoverageRecoveryMergePolicy {
+function buildCoverageRecoveryMergePolicy(): AICoverageRecoveryMergePolicy {
   return {
     completionSentinelRequired: true,
     dbMutationAllowedNow: false,

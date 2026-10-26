@@ -44,7 +44,7 @@ Migration 0077 changed `questions_staff_access` to require `private.is_org_admin
 
 **P3-1. Naming drift:** "Question Bank" vs "Library" used interchangeably in code/PRDs/RPC names (`question_banks` tables, "Library Review" strings, `approve_library_questions_v2`).
 **P3-2. Duplicate migration number 0032** (feedback-notes vs blocked google-links) is governed but permanently confusing; governance script hard-codes counts (78/77) that must be bumped every migration.
-**P3-3. `docs/` contains a stray PDF with mojibake filename (`AP#U5fae…pdf`).**
+**P3-3. `docs/` contained a stray PDF with mojibake filename (`AP#U5fae…pdf`) — removed in the docs cleanup.**
 **P3-4. Root-level `test/` vs `scripts/` split for tests is uneven (5 unit test files vs 230 scripts).**
 
 ## Watch items (carried from prior security work)

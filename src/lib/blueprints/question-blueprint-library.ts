@@ -15,12 +15,12 @@ export type QuestionBlueprintOwnerScope =
   | "teacher"
   | "private";
 
-export type QuestionBlueprintLibraryEntryStatus =
+type QuestionBlueprintLibraryEntryStatus =
   | "draft"
   | "approved"
   | "deprecated";
 
-export type QuestionBlueprintLibraryPersistencePlanVersion =
+type QuestionBlueprintLibraryPersistencePlanVersion =
   "question_blueprint_library_persistence_plan_v1";
 
 export interface QuestionBlueprintLibraryEntry {
@@ -58,7 +58,7 @@ export interface QuestionBlueprintLibraryPersistencePlan {
   warnings: string[];
 }
 
-export interface QuestionBlueprintLibraryPersistenceStats {
+interface QuestionBlueprintLibraryPersistenceStats {
   generatedQuestionCount: 0;
   libraryEntryCount: number;
   libraryWriteCount: 0;
@@ -71,7 +71,7 @@ export interface QuestionBlueprintLibraryPersistenceStats {
 export const QUESTION_BLUEPRINT_LIBRARY_PERSISTENCE_PLAN_PATH =
   "summary.aiPdfImport.questionBlueprintLibraryPersistencePlan";
 
-export const QUESTION_BLUEPRINT_LIBRARY_BASE_WARNINGS = [
+const QUESTION_BLUEPRINT_LIBRARY_BASE_WARNINGS = [
   "question_blueprint_library_persistence_planning_only",
   "question_blueprint_library_no_db_write",
   "question_blueprint_library_no_generated_questions",

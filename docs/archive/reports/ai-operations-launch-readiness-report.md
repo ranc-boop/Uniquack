@@ -16,13 +16,13 @@ Admin owns this new operational surface. Teachers only see existing safe queue s
 
 Repository audit confirmed the clean migration files `0033_ai_provider_jobs.sql`, `0034_ai_provider_jobs_worker_role_fix.sql`, and `0035_ai_provider_routing_circuit_breaker.sql` are present. Prior project validation recorded `0033` through `0035` as manually applied on the clean Supabase project. This PR adds forward-only `0036_ai_operations_launch_readiness.sql`; it has **not** been applied by this PR.
 
-Use [the manual apply guide](ai-operations-0036-manual-apply.md) after merge. The migration chain already contains a pre-existing duplicate numeric prefix `0032` for unrelated Google and feedback-note migrations. PR4-L introduces no duplicate version and does not edit that baseline artifact.
+Use [the manual apply guide](../manual-apply/ai-operations-0036-manual-apply.md) after merge. The migration chain already contains a pre-existing duplicate numeric prefix `0032` for unrelated Google and feedback-note migrations. PR4-L introduces no duplicate version and does not edit that baseline artifact.
 
 ## Worker scheduling design
 
 `POST /api/internal/ai-jobs/run` remains the only worker entry point. It requires a timing-safe server-only `AI_JOBS_INTERNAL_TOKEN`, accepts no request payload, has a fixed `240` second runtime ceiling, and invokes the existing durable worker with a bounded limit.
 
-The worker reads a service-role-only control record before claiming. It respects an emergency worker-claim pause and never exceeds the existing database queue caps. [The scheduler simulation](../scripts/ai-jobs-scheduler-simulation.mjs) verifies the trusted invocation contract without network or provider calls.
+The worker reads a service-role-only control record before claiming. It respects an emergency worker-claim pause and never exceeds the existing database queue caps. [The scheduler simulation](../../../scripts/ai-jobs-scheduler-simulation.mjs) verifies the trusted invocation contract without network or provider calls.
 
 ## Telemetry model and privacy
 

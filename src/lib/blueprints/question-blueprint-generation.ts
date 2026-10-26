@@ -100,7 +100,7 @@ export type QuestionBlueprintGenerationResult = {
   warnings: string[];
 };
 
-export const QUESTION_BLUEPRINT_GENERATION_PROMPT_CONTRACT = [
+const QUESTION_BLUEPRINT_GENERATION_PROMPT_CONTRACT = [
   "Generate original questions that follow the approved blueprint structure.",
   "Do not copy the source question wording, numbers, scenario, or surface details.",
   "Preserve concept/method/task/form and cognitive demand.",

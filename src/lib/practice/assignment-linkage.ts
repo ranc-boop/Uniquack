@@ -45,7 +45,7 @@ export const ASSIGNMENT_PRACTICE_START_ERROR_CODES = [
 export type AssignmentPracticeStartErrorCode =
   (typeof ASSIGNMENT_PRACTICE_START_ERROR_CODES)[number];
 
-export const ASSIGNMENT_PRACTICE_START_STAGES = [
+const ASSIGNMENT_PRACTICE_START_STAGES = [
   "request",
   "authentication",
   "student_profile",

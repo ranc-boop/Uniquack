@@ -1,6 +1,6 @@
 export const QUESTION_SOURCE_FILES_BUCKET = "question-source-files";
 export const QUESTION_SOURCE_FILE_MAX_BYTES = 20 * 1024 * 1024;
-export const QUESTION_SOURCE_FILE_MIME_TYPE = "application/pdf";
+const QUESTION_SOURCE_FILE_MIME_TYPE = "application/pdf";
 export const QUESTION_SOURCE_FILE_ACCEPT = `${QUESTION_SOURCE_FILE_MIME_TYPE},.pdf`;
 
 export function normalizeQuestionSourceFileMimeType({

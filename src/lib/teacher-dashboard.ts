@@ -82,7 +82,7 @@ export type TeacherDashboardSummary = {
   setupNeeded: boolean;
 };
 
-export type TeacherHomeNextAction = {
+type TeacherHomeNextAction = {
   count: number | null;
   href: string;
   label: string;

@@ -1,4 +1,4 @@
-export const aiProviderJobKinds = [
+const aiProviderJobKinds = [
   "ai_pdf_extract",
   "ai_pdf_coverage_recovery",
   "blueprint_generate_questions",
@@ -6,7 +6,7 @@ export const aiProviderJobKinds = [
 
 export type AIProviderJobKind = (typeof aiProviderJobKinds)[number];
 
-export const aiProviderJobStatuses = [
+const aiProviderJobStatuses = [
   "queued",
   "leased",
   "processing",

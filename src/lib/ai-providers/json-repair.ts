@@ -105,7 +105,7 @@ function findJsonLikeRange(value: string) {
   return end > start ? value.slice(start, end + 1) : null;
 }
 
-export function extractJsonCandidate(value: string) {
+function extractJsonCandidate(value: string) {
   const trimmed = value.trim().replace(/^\uFEFF/, "");
   const fenced = /```(?:json)?\s*([\s\S]*?)```/i.exec(trimmed);
 
@@ -123,7 +123,7 @@ export function extractJsonCandidate(value: string) {
   return findJsonLikeRange(trimmed)?.trim() ?? trimmed;
 }
 
-export function repairInvalidJsonEscapes(value: string) {
+function repairInvalidJsonEscapes(value: string) {
   let repaired = "";
   let inString = false;
 

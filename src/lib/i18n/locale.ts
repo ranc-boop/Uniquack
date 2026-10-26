@@ -1,8 +1,8 @@
-export const SUPPORTED_LOCALES = ["en", "zh-CN"] as const;
+const SUPPORTED_LOCALES = ["en", "zh-CN"] as const;
 
 export type Locale = (typeof SUPPORTED_LOCALES)[number];
 
-export const DEFAULT_LOCALE: Locale = "en";
+const DEFAULT_LOCALE: Locale = "en";
 export const LOCALE_COOKIE_NAME = "edustruct_locale";
 export const LOCALE_COOKIE_MAX_AGE_SECONDS = 60 * 60 * 24 * 365;
 
@@ -16,7 +16,7 @@ export function localeCookieOptions(secure = process.env.NODE_ENV === "productio
   };
 }
 
-export function isLocale(value: unknown): value is Locale {
+function isLocale(value: unknown): value is Locale {
   return typeof value === "string" && SUPPORTED_LOCALES.includes(value as Locale);
 }
 
@@ -44,7 +44,7 @@ export function resolveLocale({ cookieValue, acceptLanguage }: ResolveLocaleInpu
   return acceptsChinese(acceptLanguage) ? "zh-CN" : DEFAULT_LOCALE;
 }
 
-export function localeForIntl(locale: Locale) {
+function localeForIntl(locale: Locale) {
   return locale === "en" ? "en-US" : locale;
 }
 

@@ -1,9 +1,9 @@
 import { parsePossiblyMalformedJson } from "@/lib/ai-providers/json-repair";
 
-export type AIBlueprintObservationPlanVersion =
+type AIBlueprintObservationPlanVersion =
   "blueprint_observation_plan_v1";
 
-export type AIBlueprintObservationPlanStatus =
+type AIBlueprintObservationPlanStatus =
   | "completed"
   | "completed_with_warnings"
   | "skipped"
@@ -91,7 +91,7 @@ export interface AIBlueprintObservationStats {
   warningCount: number;
 }
 
-export interface AIBlueprintObservationValidationResult {
+interface AIBlueprintObservationValidationResult {
   errors: string[];
   valid: boolean;
   warnings: string[];
@@ -113,18 +113,18 @@ type BlueprintObservationPacketSeed = {
 
 export const BLUEPRINT_OBSERVATION_EVIDENCE_SNIPPET_MAX_CHARS = 280;
 export const BLUEPRINT_OBSERVATION_SUMMARY_MAX_CHARS = 1200;
-export const BLUEPRINT_OBSERVATION_PACKET_LIMIT = 40;
+const BLUEPRINT_OBSERVATION_PACKET_LIMIT = 40;
 export const AI_BLUEPRINT_OBSERVATION_SUMMARY_PATH =
   "summary.aiPdfImport.blueprintObservationPlan";
 
-export const AI_BLUEPRINT_OBSERVATION_FUTURE_PROMPT_CONTRACT = [
+const AI_BLUEPRINT_OBSERVATION_FUTURE_PROMPT_CONTRACT = [
   "You are not solving the problem.",
   "You are not generating a new question.",
   "You are not writing final tags.",
   "Only extract bounded structure/style observations for later blueprint analysis.",
 ].join("\n");
 
-export const BLUEPRINT_OBSERVATION_BASE_WARNINGS = [
+const BLUEPRINT_OBSERVATION_BASE_WARNINGS = [
   "blueprint_observation_planning_only",
   "blueprint_observation_no_provider_call",
   "blueprint_observation_no_generation",
